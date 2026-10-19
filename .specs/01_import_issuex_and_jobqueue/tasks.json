@@ -411,7 +411,7 @@
         "`make check` passes in a fresh clone",
         "all four execution paths are live in the real Makefile and tests"
       ],
-      "state": "pending"
+      "state": "done"
     }
   ]
 }
