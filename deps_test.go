@@ -3,11 +3,13 @@ package aflib_test
 import (
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"math/rand/v2"
+	"os"
 	pathpkg "path"
 	"path/filepath"
 	"slices"
@@ -71,8 +73,9 @@ func parseGoMod(text string) goMod {
 			}
 			continue
 		}
-		verb, rest, _ := strings.Cut(code, " ")
-		rest = strings.TrimSpace(rest)
+		// the go tool accepts any white space after the verb
+		fields := strings.Fields(code)
+		verb, rest := fields[0], strings.Join(fields[1:], " ")
 		switch {
 		case verb == "module":
 			m.Module = rest
@@ -123,43 +126,33 @@ func importAllowed(path, module string, test bool, ruled []string) bool {
 	return test && (inModule(path, sqliteModule) || slices.ContainsFunc(ruled, func(m string) bool { return inModule(path, m) }))
 }
 
+// importPath returns the path of an import. The parser has accepted the quoted
+// literal, so it always unquotes.
+func importPath(spec *ast.ImportSpec) string {
+	path, _ := strconv.Unquote(spec.Path.Value)
+	return path
+}
+
 // checkTree returns one message per disallowed import in the Go files under
 // root. Non-test files of the public packages may import the standard library,
 // uuid and packages of the module; test files and the files of internal
 // packages may also import sqlite and the modules ruled in.
 func checkTree(root, module string, ruled []string) ([]string, error) {
 	var problems []string
-	err := filepath.WalkDir(root, func(dir string, d fs.DirEntry, err error) error {
-		if err != nil || !d.IsDir() {
-			return err
-		}
-		if dir != root && d.Name() != "internal" && skippedDir(d.Name()) {
-			return filepath.SkipDir
-		}
-		p, err := build.Default.ImportDir(dir, 0)
-		var noGo *build.NoGoError
-		if errors.As(err, &noGo) {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("%s: %w", dir, err)
-		}
-		rel, err := filepath.Rel(root, dir)
-		if err != nil {
-			return err
-		}
-		internal := slices.Contains(strings.Split(filepath.ToSlash(rel), "/"), "internal")
+	skip := func(name string) bool { return name != "internal" && skippedDir(name) }
+	err := walkPackages(root, skip, func(rel string, p *build.Package) error {
+		internal := slices.Contains(strings.Split(rel, "/"), "internal")
 		check := func(names []string, test bool) error {
 			for _, name := range names {
-				f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, parser.ImportsOnly)
+				file := filepath.Join(root, filepath.FromSlash(rel), name)
+				f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
 				if err != nil {
 					return err
 				}
 				for _, imp := range f.Imports {
-					path, _ := strconv.Unquote(imp.Path.Value)
-					if !importAllowed(path, module, test, ruled) {
+					if path := importPath(imp); !importAllowed(path, module, test, ruled) {
 						problems = append(problems, fmt.Sprintf("%s: import %q is not allowed here (%s)",
-							pathpkg.Join(filepath.ToSlash(rel), name), path, importRule(test)))
+							pathpkg.Join(rel, name), path, importRule(test)))
 					}
 				}
 			}
@@ -191,6 +184,7 @@ func TestReplaceDirective_TS_01_33(t *testing.T) {
 	cases := map[string][]string{
 		"replace_single.mod": {"example.com/x => ../x"},
 		"replace_block.mod":  {"example.com/x => ../x", "example.com/y v1.2.3 => example.com/z v1.0.0"},
+		"replace_tab.mod":    {"example.com/x => ../x"},
 	}
 	for file, directives := range cases {
 		problems := checkGoMod(read(t, fixture("gomod", file)), nil)
@@ -210,7 +204,7 @@ func TestReplaceDirective_TS_01_33(t *testing.T) {
 // requirement outside the allowlist fails, an indirect one does not, and a
 // module ruled in is allowed.
 func TestDirectRequire_TS_01_34(t *testing.T) {
-	for _, file := range []string{"direct_single.mod", "direct_block.mod"} {
+	for _, file := range []string{"direct_single.mod", "direct_block.mod", "direct_tab.mod"} {
 		problems := checkGoMod(read(t, fixture("gomod", file)), nil)
 		if len(problems) != 1 || !strings.Contains(problems[0], "go.mod") || !strings.Contains(problems[0], "example.com/bad") {
 			t.Errorf("%s: problems = %q, want one naming go.mod and example.com/bad", file, problems)
@@ -326,6 +320,7 @@ func TestParseGoMod_TS_01_38(t *testing.T) {
 			{"example.com/direct", false},
 			{"example.com/quiet", true},
 			{"example.com/tail", false},
+			{"example.com/tabbed", false},
 		},
 		Replaces: []string{
 			"example.com/a => ../a",
@@ -338,14 +333,17 @@ func TestParseGoMod_TS_01_38(t *testing.T) {
 	}
 
 	module := parseGoMod(read(t, "go.mod")).Module
-	for _, file := range []string{"api_test.go", "deps_test.go"} {
+	files, err := filepath.Glob("*_test.go")
+	if err != nil || len(files) < 2 {
+		t.Fatalf("root test files = %v (%v), want at least api_test.go and deps_test.go", files, err)
+	}
+	for _, file := range files {
 		f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, imp := range f.Imports {
-			p, _ := strconv.Unquote(imp.Path.Value)
-			if !isStdlib(p) && p != module && !strings.HasPrefix(p, module+"/") {
+			if p := importPath(imp); !isStdlib(p) && !inModule(p, module) {
 				t.Errorf("%s imports %q, which is neither the standard library nor this module", file, p)
 			}
 		}
@@ -379,7 +377,7 @@ func TestPackageLayout_TS_01_2(t *testing.T) {
 	if want := []string{"aflib", "issuex", "jobqueue"}; !slices.Equal(names(pkgs), want) {
 		t.Errorf("public packages = %v, want %v", names(pkgs), want)
 	}
-	if matches, _ := filepath.Glob("cmd"); len(matches) != 0 {
-		t.Errorf("the module has a cmd directory")
+	if _, err := os.Stat("cmd"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the module has a cmd directory (stat: %v)", err)
 	}
 }

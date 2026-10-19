@@ -127,3 +127,16 @@ stated in the comments on the `jobs` table DDL and on `InitSchema`
 `HandlerFunc` (`jobqueue/jobqueue.go:33-37`). `docs/architecture.md` states the
 contract and points to those places. `issuex` has no package comment at all, so
 `docs/api.md` describes it from the doc of `Client`.
+
+**E7. The golden pins declarations as written, not only their shape.** The
+exported-API golden renders each exported declaration with `go/doc` and
+`go/format`, after removing comments, source positions and the marker for
+filtered fields, so that edits to comments and to unexported identifiers leave it
+unchanged (01-REQ-5.8). Two things follow from rendering what is exported. The
+initializer of an exported variable or constant is part of its declaration and is
+rendered as written, so an edit inside it that names an unexported identifier
+changes the golden; 01-REQ-5.8 holds for packages whose exported declarations do
+not refer to unexported identifiers, which is what `TestRenderProperties_TS_01_32`
+generates. And whether a type declaration is an alias (`type A = B`) is kept,
+because `=` changes what the declaration means; the position that carries it is
+the one position the renderer does not clear (`normalise` in `api_test.go`).

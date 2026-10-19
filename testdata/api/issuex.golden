@@ -126,7 +126,7 @@ type CreatePullRequestRequest struct {
 	Draft bool   `json:"draft,omitempty"`
 }
 
-type ForgeClient Client
+type ForgeClient = Client
 
 type ForgeType string
 

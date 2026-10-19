@@ -21,3 +21,7 @@ replace (
 )
 
 exclude example.com/e v1.0.0
+
+require	(
+	example.com/tabbed	v1.4.0
+)

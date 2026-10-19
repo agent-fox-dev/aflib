@@ -25,10 +25,15 @@ variables are read only for a field left empty. `NewGitHub` and `NewGitLab` appl
 this to the URL and the token, and forge detection leaves an explicit `BaseURL`
 alone.
 
-The environment's token is sent only to the host it is configured for: to the
-host named by `GITHUB_API_URL` or `GITLAB_API_URL`, or to the public forge when
-no API URL is configured. Any other host gets its own API address and no token
-(`hostEndpoint` in `issuex/detect.go`).
+When `issuex` derives the API address from a host (a remote URL, a repository
+or the origin remote), the environment's token is sent only to the host it is
+configured for: to the host named by `GITHUB_API_URL` or `GITLAB_API_URL`, or to
+the public forge when no API URL is configured. Any other host gets its own API
+address and no token (`hostEndpoint` in `issuex/detect.go`). An explicit
+`Options.BaseURL` is the caller's choice and is not checked: `NewGitHub` and
+`NewGitLab` still read the token variable when `Options.Token` is empty and send
+it to that URL, so a caller that sets `BaseURL` and wants no environment token
+sets `Options.Token`.
 
 ## How the forge is decided
 
@@ -62,9 +67,11 @@ is named with `GITLAB_API_URL` or `GITHUB_API_URL`.
 
 ## Hub sets everything explicitly
 
-Hub, whose forge API is built on `issuex`, passes the token and the remote URL
-explicitly (`Options.Token`, `Options.RemoteURL`) and does not rely on the
-environment or on a working directory
-([`docs/prd/01-import-issuex-and-jobqueue.md`](prd/01-import-issuex-and-jobqueue.md)).
-With a remote URL that names a forge, detection stops at step 2 and never starts
-`git`. `af --local` uses the environment and the fallback.
+According to the PRD of this import
+([`docs/prd/01-import-issuex-and-jobqueue.md`](prd/01-import-issuex-and-jobqueue.md)),
+hub's forge API is built on `issuex` and always passes the token and the remote
+URL explicitly (`Options.Token`, `Options.RemoteURL`), relying on neither the
+environment nor a working directory; `af --local` uses the environment and the
+fallback. Hub at the commit this package was copied from does not import `issuex`
+yet, so that is the intended use, not something this repository can show. With a
+remote URL that names a forge, detection stops at step 2 and never starts `git`.

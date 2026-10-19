@@ -5,11 +5,11 @@ const (
 
 const Version = "1"
 
-var DefaultMode = ModeA
-
 var ErrBad = errors.New("bad")
 
 func Helper(n int) string
+
+type List[T any] = []T
 
 type Mode int
 
@@ -17,6 +17,10 @@ const (
 	ModeA Mode = iota
 	ModeB
 )
+
+var DefaultMode Mode = ModeA
+
+type Names = []string
 
 type Reader interface {
 	Read() (string, error)

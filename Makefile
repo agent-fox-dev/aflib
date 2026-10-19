@@ -57,7 +57,7 @@ doc: ## Generate Go package reference (go doc -all) as text files under docs/gen
 	@rm -rf $(DOC_DIR)
 	@mkdir -p $(DOC_DIR)
 	@mod=$$(go list -m); \
-	for p in $$(go list -f '{{if .GoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v -e /internal/ -e /docs/ -e /examples/ -e /testdata/); do \
+	for p in $$(go list -f '{{if .GoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v -E '/(internal|docs|examples|testdata)(/|$$)'); do \
 		rel=$${p#$$mod}; rel=$${rel#/}; \
 		name=$$(echo "$${rel:-$(ROOT_NAME)}" | tr / _); \
 		go doc -all "$$p" > "$(DOC_DIR)/$$name.txt" || exit 1; \

@@ -24,8 +24,15 @@ var (
 	errHidden = errors.New("hidden")
 )
 
-// DefaultMode is the mode used when none is given.
-var DefaultMode = ModeA
+// DefaultMode is the mode used when none is given; its type makes go/doc
+// attach it to Mode.
+var DefaultMode Mode = ModeA
+
+// Names is an alias, which only the "=" tells from a defined type.
+type Names = []string
+
+// List is a generic alias.
+type List[T any] = []T
 
 // Widget is the main type.
 type Widget struct {

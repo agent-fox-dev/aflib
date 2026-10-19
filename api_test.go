@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -55,15 +56,16 @@ func goldenName(dir string) string {
 	return strings.ReplaceAll(dir, "/", "_")
 }
 
-// discover returns the public packages under root, sorted by name. A directory
-// is one when it has non-test Go files for the host build context.
-func discover(root string) ([]publicPkg, error) {
-	var pkgs []publicPkg
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+// walkPackages calls visit for every directory under root that holds Go files,
+// with its slash-separated path relative to root ("." for root) and what go/build
+// found there for the host build context. Directories for which skip reports
+// true are not entered; root itself is never skipped.
+func walkPackages(root string, skip func(name string) bool, visit func(rel string, p *build.Package) error) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || !d.IsDir() {
 			return err
 		}
-		if path != root && skippedDir(d.Name()) {
+		if path != root && skip(d.Name()) {
 			return filepath.SkipDir
 		}
 		p, err := build.Default.ImportDir(path, 0)
@@ -74,15 +76,22 @@ func discover(root string) ([]publicPkg, error) {
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		if len(p.GoFiles) == 0 {
-			return nil
-		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
-		dir := filepath.ToSlash(rel)
-		pkgs = append(pkgs, publicPkg{Name: goldenName(dir), Dir: dir})
+		return visit(filepath.ToSlash(rel), p)
+	})
+}
+
+// discover returns the public packages under root, sorted by name. A directory
+// is one when it has non-test Go files for the host build context.
+func discover(root string) ([]publicPkg, error) {
+	var pkgs []publicPkg
+	err := walkPackages(root, skippedDir, func(dir string, p *build.Package) error {
+		if len(p.GoFiles) > 0 {
+			pkgs = append(pkgs, publicPkg{Name: goldenName(dir), Dir: dir})
+		}
 		return nil
 	})
 	slices.SortFunc(pkgs, func(a, b publicPkg) int { return strings.Compare(a.Name, b.Name) })
@@ -97,7 +106,9 @@ var (
 // normalise removes from a declaration everything the printer would take from
 // the layout of the source: comments, positions (which decide blank lines, line
 // breaks and whether a group keeps its parentheses) and the marker go/printer
-// prints for filtered fields. What is left depends on the declaration only.
+// prints for filtered fields. What is left depends on the declaration only. The
+// initializers of exported variables and constants are part of the declaration
+// and stay as written.
 func normalise(v reflect.Value, seen map[uintptr]bool) {
 	switch v.Kind() {
 	case reflect.Pointer:
@@ -115,6 +126,13 @@ func normalise(v reflect.Value, seen map[uintptr]bool) {
 			normalise(v.Index(i), seen)
 		}
 	case reflect.Struct:
+		// The one position that means something: Assign is valid exactly when a
+		// type declaration is an alias (type A = B), and go/printer prints the "="
+		// only then.
+		alias := false
+		if spec, ok := v.Addr().Interface().(*ast.TypeSpec); ok {
+			alias = spec.Assign.IsValid()
+		}
 		for i := range v.NumField() {
 			f := v.Field(i)
 			switch {
@@ -128,6 +146,10 @@ func normalise(v reflect.Value, seen map[uintptr]bool) {
 			}
 		}
 		switch n := v.Addr().Interface().(type) {
+		case *ast.TypeSpec:
+			if alias {
+				n.Assign = 1
+			}
 		case *ast.StructType:
 			n.Incomplete = false
 			braceEmpty(n.Fields)
@@ -349,7 +371,10 @@ func copyTree(t *testing.T, src string) string {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(src, path)
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
 		if d.IsDir() {
 			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
 		}
@@ -462,7 +487,7 @@ func TestCompareGolden_TS_01_28(t *testing.T) {
 	if len(problems) != 1 {
 		t.Fatalf("got %d problems, want 1: %q", len(problems), problems)
 	}
-	for _, want := range []string{"p", "line 1", "func F(n int) int", "func F(n int) string", "make api-golden"} {
+	for _, want := range []string{"package p:", "line 1", "func F(n int) int", "func F(n int) string", "make api-golden"} {
 		if !strings.Contains(problems[0], want) {
 			t.Errorf("the message does not contain %q: %s", want, problems[0])
 		}
@@ -542,7 +567,7 @@ type item struct {
 	exported bool
 }
 
-const itemKinds = 8
+const itemKinds = 9
 
 // genItems returns a small random list of declarations.
 func genItems(r *rand.Rand) []item {
@@ -634,6 +659,7 @@ func writeSource(items []item, d *decor) string {
 				name, d.standalone(), d.trail(), d.standalone(), d.between("\tmid%d()\n", it.id), d.unexported("done", it.id))
 		case 5:
 			fmt.Fprintf(&b, "type %s int\n\n%sconst (\n\t%sFirst %s = iota%s\n\t%s\n)\n\n", name, d.doc(), name, name, d.trail(), d.unexported("unexp", it.id))
+			fmt.Fprintf(&b, "%svar %sDefault %s = %sFirst\n\n", d.doc(), name, name, name)
 			fmt.Fprintf(&b, "%sfunc (t %s) Get() int { return int(t) }\n\n", d.doc(), name)
 			fmt.Fprintf(&b, "func (t %s) %s() {}\n\n", name, d.unexported("set", it.id))
 		case 6:
@@ -644,6 +670,9 @@ func writeSource(items []item, d *decor) string {
 				ctor = fmt.Sprintf("NewT%d", it.id)
 			}
 			fmt.Fprintf(&b, "type %s struct{ n int }\n\n%sfunc %s() *%s { return &%s{} }\n\n", name, d.doc(), ctor, name, name)
+		case 8:
+			// an alias, which only a "=" tells from a defined type, and a generic one
+			fmt.Fprintf(&b, "type %s = int\n\n%stype %sOf[T any] = []T\n\n", name, d.doc(), name)
 		case 7:
 			fmt.Fprintf(&b, "const (\n\t%s = iota\n\tG%da = %d%s\n%s%s\tG%db = %d\n\t%s = 0\n)\n\n",
 				d.unexported("lead", it.id), it.id, it.id, d.trail(), d.standalone(), d.between("\tmid%d = 7\n", it.id), it.id, it.id, d.unexported("tail", it.id))
@@ -657,6 +686,7 @@ func writeSource(items []item, d *decor) string {
 // comments or unexported identifiers change, but does change with an exported
 // one.
 func TestRenderProperties_TS_01_32(t *testing.T) {
+	exportedName := regexp.MustCompile(`\b(?:E|G|NewT)\d+`)
 	nonEmpty := 0
 	for seed := uint64(1); seed <= 300; seed++ {
 		r := rand.New(rand.NewPCG(seed, seed))
@@ -666,8 +696,8 @@ func TestRenderProperties_TS_01_32(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seed %d: %v\n%s", seed, err, bare)
 		}
-		if again, _ := renderSource(bare); again != first {
-			t.Fatalf("seed %d: two renderings of the same source differ", seed)
+		if again, err := renderSource(bare); err != nil || again != first {
+			t.Fatalf("seed %d: a second rendering of the same source differs (error %v)", seed, err)
 		}
 		decorated := writeSource(items, &decor{r: rand.New(rand.NewPCG(seed, seed+1))})
 		got, err := renderSource(decorated)
@@ -681,7 +711,11 @@ func TestRenderProperties_TS_01_32(t *testing.T) {
 			continue
 		}
 		nonEmpty++
-		changed, err := renderSource(strings.Replace(bare, "E", "X", 1))
+		loc := exportedName.FindStringIndex(bare)
+		if loc == nil {
+			t.Fatalf("seed %d: the rendering has declarations but the source has no exported name\n%s", seed, bare)
+		}
+		changed, err := renderSource(bare[:loc[0]] + "X" + bare[loc[0]:])
 		if err != nil {
 			t.Fatalf("seed %d: %v", seed, err)
 		}
