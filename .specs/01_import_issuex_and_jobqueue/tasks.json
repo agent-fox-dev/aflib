@@ -118,7 +118,7 @@
         "`go test -short -count=1 ./jobqueue/...` exits 0",
         "go.mod versions of uuid and modernc.org/sqlite equal hub's at ce8e1b8"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 4,
