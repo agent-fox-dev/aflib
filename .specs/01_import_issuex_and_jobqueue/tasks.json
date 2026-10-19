@@ -376,7 +376,7 @@
         "`cmp AGENTS.md CLAUDE.md` reports no difference",
         "only the Repository Layout and Repository Specifics sections differ from the originals"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 10,
