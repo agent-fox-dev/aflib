@@ -42,7 +42,7 @@
         "`make -n` succeeds for all 14 targets",
         "`make lint` exits 0 with a skip message when golangci-lint is absent from PATH"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,
