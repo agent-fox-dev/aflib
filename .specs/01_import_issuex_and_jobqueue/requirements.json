@@ -1,0 +1,629 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v2.json",
+  "spec_id": "01",
+  "spec_name": "import_issuex_and_jobqueue",
+  "schema_version": 2,
+  "introduction": "aflib (github.com/agent-fox-dev/aflib) is the single Go module holding packages shared by the agent-fox programs. This spec imports the forge client `issuex` from agent-fox and the durable SQLite job queue `jobqueue` from hub unchanged. It also gives the repository the standard agent-fox shape: the Makefile quality gate, lint configuration, reference docs, an exported-API golden guard and a dependency guard.",
+  "glossary": {
+    "allowlist": "The modules the code may depend on. Non-test code of public packages: the standard library, `github.com/google/uuid`, and this module's packages. Test files and `internal/` files may also use `modernc.org/sqlite`, plus any module ruled in under 01-REQ-4.",
+    "clean checkout": "A fresh clone of this repository alone: no sibling repositories, no `go.work`, no `replace` directive.",
+    "erratum": "The file `docs/errata/01_import_issuex_and_jobqueue.md`. It records the source commits, the meaning of the foreign requirement IDs in the copied tests, and every finding.",
+    "finding": "A case where copied code does not work unchanged in this module. Each one is handled by the fixed rules of 01-REQ-4 and listed in the erratum.",
+    "golden": "The committed file `testdata/api/<name>.golden`. It holds the comment-free, go/format-rendered exported declarations of one public package.",
+    "golden name": "A package's directory relative to the module root, with `/` replaced by `_`. The root package's golden name is `aflib`.",
+    "public package": "A directory of this module that contains non-test Go files for the host build context. It is not `testdata`, does not start with `.` or `_`, is not `docs` or `examples`, and has no `internal` path element.",
+    "source commit": "The fixed commit a package is copied from: agent-fox `84fb9b4` for `issuex/`, hub `ce8e1b8` for `internal/jobqueue/`. Each is resolved to its full hash and read from git objects, never from a working tree."
+  },
+  "requirements": [
+    {
+      "id": "01-REQ-1",
+      "title": "Module definition",
+      "rationale": "Consumers can switch to aflib by changing an import path only if the module builds by itself and pulls in nothing from its former homes.",
+      "criteria": [
+        {
+          "id": "01-REQ-1.1",
+          "pattern": "ubiquitous",
+          "system": "go.mod",
+          "action": "declare `module github.com/agent-fox-dev/aflib` and `go 1.27`, and directly require `github.com/google/uuid` and `modernc.org/sqlite` at the versions hub's go.mod requires at its source commit. It contains no `replace` directive. `go.sum` is committed and no `go.work` is committed"
+        },
+        {
+          "id": "01-REQ-1.2",
+          "pattern": "ubiquitous",
+          "system": "module",
+          "action": "contain exactly three non-internal packages: the root package `aflib`, `issuex/` and `jobqueue/`. There is no `cmd/` directory, and no `internal/` package except helpers copied under 01-REQ-4.3"
+        },
+        {
+          "id": "01-REQ-1.3",
+          "pattern": "ubiquitous",
+          "system": "root package aflib",
+          "action": "consist of `doc.go` holding only a package doc comment, with no declarations and no imports. The comment names the module, says it holds the packages shared by the agent-fox programs, and gives `issuex` and `jobqueue` one line each",
+          "contract": "the root package's golden is empty"
+        },
+        {
+          "id": "01-REQ-1.4",
+          "pattern": "event_driven",
+          "condition": "`go build ./...` and `go test -short ./...` run in a clean checkout",
+          "system": "module",
+          "action": "build and pass every test, with no network access beyond fetching the required modules and their requirements through the Go module proxy",
+          "contract": "both commands exit 0"
+        },
+        {
+          "id": "01-REQ-1.5",
+          "pattern": "event_driven",
+          "condition": "`go list -m all` runs in the module",
+          "system": "module",
+          "action": "list only `github.com/agent-fox-dev/aflib`, `github.com/google/uuid`, `modernc.org/sqlite` and their transitive requirements",
+          "contract": "no listed module path starts with `github.com/agent-fox-dev/hub`, `github.com/agent-fox-dev/agent-fox` or the AgentKit module path"
+        },
+        {
+          "id": "01-REQ-1.6",
+          "pattern": "unwanted",
+          "condition": "no forge token, forge URL variable or GitLab smoke-test variable is set in the environment and no sibling repository is present",
+          "system": "module",
+          "action": "still pass `go test -short ./...`, skipping only the tests the source repositories already skip in that environment",
+          "contract": "exit 0; the GitLab smoke test is reported as skipped"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-2",
+      "title": "Importing issuex",
+      "rationale": "A byte-identical copy from a fixed commit makes the move reviewable and lets agent-fox and hub switch by changing an import path only.",
+      "criteria": [
+        {
+          "id": "01-REQ-2.1",
+          "pattern": "ubiquitous",
+          "system": "issuex import",
+          "action": "place every file of `issuex/` from https://github.com/agent-fox-dev/agent-fox at the full hash of commit `84fb9b4` at the same relative path under `issuex/`, including `testdata/` and non-Go files. The files are extracted from git objects at that commit, for example with `git archive`"
+        },
+        {
+          "id": "01-REQ-2.2",
+          "pattern": "ubiquitous",
+          "system": "issuex import",
+          "action": "keep every non-test `.go` file under `issuex/` byte-identical to its source file, except edits listed in the erratum under 01-REQ-4.6",
+          "contract": "comparing each non-test file with `git show <fullhash>:issuex/<file>` finds no difference outside the listed findings"
+        },
+        {
+          "id": "01-REQ-2.3",
+          "pattern": "ubiquitous",
+          "system": "issuex import",
+          "action": "limit the edits to `_test.go` files to rewriting import paths `github.com/agent-fox-dev/agent-fox/issuex` (and its sub-paths) to `github.com/agent-fox-dev/aflib/issuex`. The package names `issuex` and `issuex_test` stay unchanged",
+          "contract": "a line diff of each test file against its source shows only import-path lines"
+        },
+        {
+          "id": "01-REQ-2.4",
+          "pattern": "ubiquitous",
+          "system": "issuex import",
+          "action": "arrive in its own commit that contains only the package's files, the test import edits and the go.mod/go.sum changes they need. The commit message names the source repository and the full commit hash"
+        },
+        {
+          "id": "01-REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "the agent-fox source commit cannot be fetched",
+          "system": "implementer",
+          "action": "stop the import without reconstructing the package from memory, documentation or a different commit",
+          "contract": "no `issuex/` files are committed; the handoff reports the unreachable commit"
+        },
+        {
+          "id": "01-REQ-2.6",
+          "pattern": "event_driven",
+          "condition": "`go test -short ./issuex/...` runs in a clean checkout",
+          "system": "issuex",
+          "action": "pass every copied test. This covers environment-driven forge detection, the `git remote get-url` fallback, the `gh` probe, and the precedence of explicit `Options` over the environment. The GitLab smoke test is skipped unless its environment variable is set, as in the source",
+          "contract": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-3",
+      "title": "Importing jobqueue",
+      "rationale": "The agent-fox service and hub both need the same durable job queue, and hub's `internal/` copy cannot be imported from outside hub.",
+      "criteria": [
+        {
+          "id": "01-REQ-3.1",
+          "pattern": "ubiquitous",
+          "system": "jobqueue import",
+          "action": "place every file of `internal/jobqueue/` from https://github.com/agent-fox-dev/hub at the full hash of commit `ce8e1b8` at the same relative path under `jobqueue/`. The files are extracted from git objects at that commit"
+        },
+        {
+          "id": "01-REQ-3.2",
+          "pattern": "ubiquitous",
+          "system": "jobqueue import",
+          "action": "keep every non-test `.go` file under `jobqueue/` byte-identical to its source file, except edits listed in the erratum under 01-REQ-4.6",
+          "contract": "comparing each non-test file with `git show <fullhash>:internal/jobqueue/<file>` finds no difference outside the listed findings"
+        },
+        {
+          "id": "01-REQ-3.3",
+          "pattern": "ubiquitous",
+          "system": "jobqueue import",
+          "action": "limit the edits to `_test.go` files to rewriting `github.com/agent-fox-dev/hub/internal/jobqueue` to `github.com/agent-fox-dev/aflib/jobqueue`",
+          "contract": "a line diff of each test file against its source shows only import-path lines"
+        },
+        {
+          "id": "01-REQ-3.4",
+          "pattern": "ubiquitous",
+          "system": "jobqueue import",
+          "action": "arrive in its own commit that contains only the package's files, the test import edits and the go.mod/go.sum changes they need. The commit message names the source repository and the full commit hash"
+        },
+        {
+          "id": "01-REQ-3.5",
+          "pattern": "unwanted",
+          "condition": "the hub source commit cannot be fetched",
+          "system": "implementer",
+          "action": "stop the import without reconstructing the package from memory, documentation or a different commit",
+          "contract": "no `jobqueue/` files are committed; the handoff reports the unreachable commit"
+        },
+        {
+          "id": "01-REQ-3.6",
+          "pattern": "ubiquitous",
+          "system": "jobqueue",
+          "action": "import `modernc.org/sqlite` only from `_test.go` files, and import only the standard library and `github.com/google/uuid` from non-test files"
+        },
+        {
+          "id": "01-REQ-3.7",
+          "pattern": "event_driven",
+          "condition": "`go test -short ./jobqueue/...` runs in a clean checkout",
+          "system": "jobqueue",
+          "action": "pass every copied test against SQLite opened through `modernc.org/sqlite`",
+          "contract": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-4",
+      "title": "Handling findings during the import",
+      "rationale": "An unattended run needs a deterministic answer for code that does not work unchanged in its new home, and must never trade a test away for a passing build.",
+      "criteria": [
+        {
+          "id": "01-REQ-4.1",
+          "pattern": "ubiquitous",
+          "system": "implementer",
+          "action": "keep every copied test: none is deleted, skipped, gated with `t.Skip`, or weakened to make the build pass",
+          "contract": "the set of `Test*`, `Fuzz*` and `Example*` function names in each package equals the set at the source commit"
+        },
+        {
+          "id": "01-REQ-4.2",
+          "pattern": "unwanted",
+          "condition": "a copied non-test file imports another package of its source module",
+          "system": "implementer",
+          "action": "stop without copying that package and without editing the file",
+          "contract": "the finding is recorded in the erratum and reported in the handoff as blocking"
+        },
+        {
+          "id": "01-REQ-4.3",
+          "pattern": "unwanted",
+          "condition": "a copied test file imports a test helper package of its source module",
+          "system": "implementer",
+          "action": "copy the helper files the tests need into `internal/<helper>/` of this module, so the test files' edits stay import-path-only, and record the copy in `docs/architecture.md`",
+          "contract": "the test file diff shows only import-path lines; the helper appears in the erratum"
+        },
+        {
+          "id": "01-REQ-4.4",
+          "pattern": "unwanted",
+          "condition": "a copied test needs a module outside the allowlist",
+          "system": "implementer",
+          "action": "add that module as a test-only dependency, record a ruling naming it in `docs/architecture.md`, and add it to the test allowlist of 01-REQ-6",
+          "contract": "the module appears in go.mod and in the erratum, and only `_test.go` or `internal/` files import it"
+        },
+        {
+          "id": "01-REQ-4.5",
+          "pattern": "unwanted",
+          "condition": "`golangci-lint` reports a finding in copied code",
+          "system": "implementer",
+          "action": "add a path-scoped exclusion to `.golangci.yml`, with a comment pointing at the erratum, and leave the copied code unedited",
+          "contract": "`golangci-lint run` exits 0; the exclusion is listed in the erratum"
+        },
+        {
+          "id": "01-REQ-4.6",
+          "pattern": "unwanted",
+          "condition": "`gofmt` or `go vet` rejects copied code",
+          "system": "implementer",
+          "action": "make the smallest edit that passes, without changing any exported declaration",
+          "contract": "the edit is listed in the erratum with file and reason; the package's golden still equals its source exported declarations"
+        },
+        {
+          "id": "01-REQ-4.7",
+          "pattern": "unwanted",
+          "condition": "a copied test fails in the new location for an environmental reason, such as missing testdata",
+          "system": "implementer",
+          "action": "fix the cause outside the test file. Where no such fix exists, stop",
+          "contract": "the fix, or the blocking failure, is recorded in the erratum and the handoff"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-5",
+      "title": "Exported-API golden",
+      "rationale": "A change to any exported declaration, or a new public package, must fail the quality gate until a person accepts it on purpose.",
+      "criteria": [
+        {
+          "id": "01-REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "`TestExportedAPI` in package `aflib_test` at the module root runs",
+          "system": "API golden test",
+          "action": "discover every public package under the module root. A directory counts when it holds non-test Go files for the host build context (selected with `go/build`). It is skipped when it is `testdata`, starts with `.` or `_`, is `docs` or `examples`, or has an `internal` path element",
+          "contract": "on the committed tree the discovered set is exactly {aflib, issuex, jobqueue}"
+        },
+        {
+          "id": "01-REQ-5.2",
+          "pattern": "ubiquitous",
+          "system": "API golden test",
+          "action": "render each public package's exported declarations using only `go/build`, `go/parser`, `go/doc` and `go/format`, without executing `go doc`. The order is constants, variables, functions, then types, each type followed by its constants, variables, functions and methods in `go/doc` order. Each declaration is formatted by `go/format`, followed by a blank line, with doc, field and line comments removed, and with no package clause or import path"
+        },
+        {
+          "id": "01-REQ-5.3",
+          "pattern": "ubiquitous",
+          "system": "API golden test",
+          "action": "compare each package's rendering with `testdata/api/<golden name>.golden`. A package with no exported declarations has an empty golden",
+          "contract": "`testdata/api/aflib.golden` is empty; `issuex.golden` and `jobqueue.golden` equal the source packages' exported declarations at their source commits"
+        },
+        {
+          "id": "01-REQ-5.4",
+          "pattern": "unwanted",
+          "condition": "a package's rendering differs from its golden",
+          "system": "API golden test",
+          "action": "fail the test",
+          "contract": "the failure message names the package, the first differing line, and the command that regenerates the goldens (`make api-golden`)"
+        },
+        {
+          "id": "01-REQ-5.5",
+          "pattern": "unwanted",
+          "condition": "a discovered public package has no golden file",
+          "system": "API golden test",
+          "action": "fail the test",
+          "contract": "the failure message names the package"
+        },
+        {
+          "id": "01-REQ-5.6",
+          "pattern": "unwanted",
+          "condition": "a golden file in `testdata/api/` matches no discovered package",
+          "system": "API golden test",
+          "action": "fail the test",
+          "contract": "the failure message names the golden file"
+        },
+        {
+          "id": "01-REQ-5.7",
+          "pattern": "event_driven",
+          "condition": "the test runs with `-update`, or `make api-golden` runs",
+          "system": "API golden test",
+          "action": "rewrite the golden of every discovered public package with its current rendering",
+          "contract": "a following run without `-update` passes"
+        },
+        {
+          "id": "01-REQ-5.8",
+          "pattern": "ubiquitous",
+          "system": "API golden renderer",
+          "action": "for any package source, give byte-identical output across repeated renders and across edits that change only comments or unexported identifiers"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-6",
+      "title": "Dependency guard",
+      "rationale": "The allowlist rule and the no-replace rule need a check inside `make check` to be enforceable.",
+      "criteria": [
+        {
+          "id": "01-REQ-6.1",
+          "pattern": "unwanted",
+          "condition": "go.mod contains a `replace` directive, in single-line or block form",
+          "system": "TestDependencies",
+          "action": "fail the test",
+          "contract": "the failure message names `go.mod` and the replace directive"
+        },
+        {
+          "id": "01-REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "go.mod directly requires, without a `// indirect` comment, a module outside {`github.com/google/uuid`, `modernc.org/sqlite`} plus modules added under 01-REQ-4.4",
+          "system": "TestDependencies",
+          "action": "fail the test",
+          "contract": "the failure message names `go.mod` and the offending module path"
+        },
+        {
+          "id": "01-REQ-6.3",
+          "pattern": "unwanted",
+          "condition": "a non-test file of a public package imports a path that is not standard library, `github.com/google/uuid`, or a package of this module",
+          "system": "TestDependencies",
+          "action": "fail the test",
+          "contract": "the failure message names the file and the offending import path"
+        },
+        {
+          "id": "01-REQ-6.4",
+          "pattern": "unwanted",
+          "condition": "a test file, or any file of an `internal/` package, imports a path that is not standard library, a package of this module, or the test allowlist {`github.com/google/uuid`, `modernc.org/sqlite`} plus modules added under 01-REQ-4.4",
+          "system": "TestDependencies",
+          "action": "fail the test",
+          "contract": "the failure message names the file and the offending import path"
+        },
+        {
+          "id": "01-REQ-6.5",
+          "pattern": "ubiquitous",
+          "system": "TestDependencies",
+          "action": "for any import path, classify it as standard library exactly when the first `/`-separated element of the path contains no dot"
+        },
+        {
+          "id": "01-REQ-6.6",
+          "pattern": "ubiquitous",
+          "system": "TestDependencies",
+          "action": "parse go.mod `require` blocks, single-line `require` directives, `// indirect` comments and `replace` directives with standard-library code only. It makes no network access and imports no third-party module"
+        },
+        {
+          "id": "01-REQ-6.7",
+          "pattern": "event_driven",
+          "condition": "`TestDependencies` runs against the committed tree",
+          "system": "TestDependencies",
+          "action": "pass",
+          "contract": "test result PASS with no reported violations"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-7",
+      "title": "Makefile and lint configuration",
+      "rationale": "Every agent-fox repository runs the same quality gate, and `make check` is the only gate agents run.",
+      "criteria": [
+        {
+          "id": "01-REQ-7.1",
+          "pattern": "ubiquitous",
+          "system": "Makefile",
+          "action": "provide these targets. `help`. `build` (`go build ./...`). `test` (`go test ./... -count=1`). `test-short` (`go test -short ./...`). `coverage`. `fmt` (gofmt in place over all tracked Go files). `vet` (`go vet ./...`). `lint`. `check`. `check-release` (fmt, vet, lint, test). `doc`. `tidy` (`go mod tidy`). `clean`. `api-golden`. There is no nested-module loop"
+        },
+        {
+          "id": "01-REQ-7.2",
+          "pattern": "event_driven",
+          "condition": "`make check` runs",
+          "system": "Makefile",
+          "action": "run `fmt`, `vet`, `lint` and `test-short` in that order, stopping at the first failing step",
+          "contract": "exit 0 when all four steps pass; a non-zero exit, with no later step run, when one fails"
+        },
+        {
+          "id": "01-REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "`golangci-lint` is not on PATH when `make lint` runs",
+          "system": "Makefile",
+          "action": "print a message that linting was skipped and succeed",
+          "contract": "exit 0 with a skip message on stdout"
+        },
+        {
+          "id": "01-REQ-7.4",
+          "pattern": "event_driven",
+          "condition": "`make doc` runs",
+          "system": "Makefile",
+          "action": "write `go doc -all <importpath>` for each public package to `docs/generated/<golden name>.txt`",
+          "contract": "on the committed tree it produces exactly `aflib.txt`, `issuex.txt` and `jobqueue.txt`, and `git status --porcelain docs/generated` is empty afterwards"
+        },
+        {
+          "id": "01-REQ-7.5",
+          "pattern": "ubiquitous",
+          "system": ".golangci.yml",
+          "action": "equal hub's `.golangci.yml` at its source commit, minus every rule that names a hub path, plus only the path-scoped `issuex` exclusions added under 01-REQ-4.5, each with a comment pointing at the erratum"
+        },
+        {
+          "id": "01-REQ-7.6",
+          "pattern": "event_driven",
+          "condition": "`golangci-lint run` runs over a clean checkout with `.golangci.yml`",
+          "system": "golangci-lint",
+          "action": "report no findings",
+          "contract": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-8",
+      "title": "Reference docs and erratum",
+      "rationale": "Agents and consumers find their way through the reference docs, and the erratum explains everything that differs from a plain copy.",
+      "criteria": [
+        {
+          "id": "01-REQ-8.1",
+          "pattern": "ubiquitous",
+          "system": "docs/api.md",
+          "action": "state that the repository has no REST API, map the public packages `aflib`, `issuex` and `jobqueue` with each one's purpose and principal exported identifiers taken from the copied code, and point to `docs/generated/`"
+        },
+        {
+          "id": "01-REQ-8.2",
+          "pattern": "ubiquitous",
+          "system": "docs/architecture.md",
+          "action": "cover each package's origin (repository and full hash), the import graph (neither package imports the other; `issuex` is standard library only; `jobqueue` uses the standard library and uuid; tests also use `modernc.org/sqlite`), the allowlist and the rule that a new module needs a ruling there first, the test layout, `jobqueue`'s caller contract (caller-owned `*sql.DB` with WAL and `busy_timeout`, idempotent handlers), versioning (`vX.Y.Z` tags, first `v0.1.0` cut by a human after both consumers switch; before 1.0 a breaking change bumps the minor version and is recorded in the errata), and any `internal/` helpers added under 01-REQ-4.3"
+        },
+        {
+          "id": "01-REQ-8.3",
+          "pattern": "ubiquitous",
+          "system": "docs/cli.md and docs/configuration.md",
+          "action": "state in `docs/cli.md`, in one line, that the repository has no command. List in `docs/configuration.md` every environment variable the copied `issuex` code reads (checked against the code, not only `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_API_URL` and `GITHUB_API_URL`), its precedence below explicit `Options`, the `git` and `gh` fallbacks, and the fact that hub sets everything explicitly. It also states that `jobqueue` reads no environment"
+        },
+        {
+          "id": "01-REQ-8.4",
+          "pattern": "ubiquitous",
+          "system": "erratum",
+          "action": "exist at `docs/errata/01_import_issuex_and_jobqueue.md`. It records the source repository and full hash of each package. It explains that requirement IDs in copied test names and comments (such as `10-REQ-6.E3` and `01-REQ-4.8`) refer to the source repositories' spec archives, not to this repository's specs. It lists every finding, or states that there were none"
+        },
+        {
+          "id": "01-REQ-8.5",
+          "pattern": "ubiquitous",
+          "system": "README.md",
+          "action": "explain the module and its two packages, how to require it (`go get github.com/agent-fox-dev/aflib`), the quality commands (`make check`, `make doc`, `make api-golden`), and link to the docs under `docs/`"
+        }
+      ]
+    },
+    {
+      "id": "01-REQ-9",
+      "title": "Agent policy files",
+      "rationale": "Agents read AGENTS.md, CLAUDE.md and the steering first, and these files still describe AgentKit.",
+      "criteria": [
+        {
+          "id": "01-REQ-9.1",
+          "pattern": "ubiquitous",
+          "system": "AGENTS.md",
+          "action": "rewrite only its Repository Layout section to describe this repository: `doc.go` (root package, doc only), `issuex/`, `jobqueue/`, the root guard tests and `testdata/api/`, `docs/` and `docs/generated/`, `.specs/`, and tests living next to the code. Every other section stays byte-identical"
+        },
+        {
+          "id": "01-REQ-9.2",
+          "pattern": "ubiquitous",
+          "system": "CLAUDE.md",
+          "action": "have content byte-identical to AGENTS.md after the rewrite"
+        },
+        {
+          "id": "01-REQ-9.3",
+          "pattern": "ubiquitous",
+          "system": ".specs/steering.md",
+          "action": "rewrite only its Repository Specifics section. It states that aflib is a library with no REST API and no command, that `docs/api.md` is the map of its public packages, and that it is a single module with no nested modules. Every other section stays byte-identical"
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "01-PATH-1",
+      "title": "A developer runs the quality gate in a clean checkout",
+      "steps": [
+        {
+          "actor": "developer",
+          "action": "clones aflib alone, with no go.work and no sibling repositories, and runs `make check`"
+        },
+        {
+          "actor": "Makefile",
+          "action": "runs gofmt and `go vet ./...`, then golangci-lint (or prints that it was skipped)"
+        },
+        {
+          "actor": "go toolchain",
+          "action": "fetches uuid and modernc.org/sqlite through the module proxy and runs `go test -short ./...`"
+        },
+        {
+          "actor": "copied tests",
+          "action": "exercise issuex against httptest servers and jobqueue against SQLite, and skip the GitLab smoke test"
+        },
+        {
+          "actor": "guard tests",
+          "action": "TestExportedAPI matches the three goldens and TestDependencies finds no violation"
+        },
+        {
+          "actor": "Makefile",
+          "action": "exits 0"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-2",
+      "title": "A developer changes an exported declaration and accepts it on purpose",
+      "steps": [
+        {
+          "actor": "developer",
+          "action": "changes the signature of an exported declaration in a public package and runs `make check`"
+        },
+        {
+          "actor": "TestExportedAPI",
+          "action": "renders the package, finds it differs from its golden, and fails, naming the package, the first differing line and `make api-golden`"
+        },
+        {
+          "actor": "developer",
+          "action": "runs `make api-golden`"
+        },
+        {
+          "actor": "TestExportedAPI",
+          "action": "rewrites `testdata/api/<name>.golden` with the new rendering"
+        },
+        {
+          "actor": "developer",
+          "action": "reruns `make check`, which exits 0 with the updated golden in the working tree"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-3",
+      "title": "A developer adds a disallowed dependency",
+      "steps": [
+        {
+          "actor": "developer",
+          "action": "adds a `replace` directive or a non-allowlisted import to a public package and runs `make check`"
+        },
+        {
+          "actor": "TestDependencies",
+          "action": "parses go.mod and each package's imports with the standard library"
+        },
+        {
+          "actor": "TestDependencies",
+          "action": "fails, naming the file and the offending directive or import"
+        },
+        {
+          "actor": "Makefile",
+          "action": "stops `check` and exits non-zero"
+        }
+      ]
+    },
+    {
+      "id": "01-PATH-4",
+      "title": "A developer regenerates the generated docs",
+      "steps": [
+        {
+          "actor": "developer",
+          "action": "runs `make doc`"
+        },
+        {
+          "actor": "Makefile",
+          "action": "discovers the public packages and runs `go doc -all` for each one"
+        },
+        {
+          "actor": "Makefile",
+          "action": "writes `docs/generated/aflib.txt`, `issuex.txt` and `jobqueue.txt`, which match the committed files"
+        }
+      ]
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "github.com/google/uuid",
+      "version": "as required by hub go.mod at ce8e1b8",
+      "verified": false,
+      "symbols": [
+        {
+          "name": "uuid",
+          "import_path": "github.com/google/uuid",
+          "signature": "whatever jobqueue calls to generate job IDs",
+          "notes": "Copied code calls it; no new code calls it."
+        }
+      ]
+    },
+    {
+      "package": "modernc.org/sqlite",
+      "version": "as required by hub go.mod at ce8e1b8",
+      "verified": false,
+      "symbols": [
+        {
+          "name": "sqlite driver",
+          "import_path": "modernc.org/sqlite",
+          "signature": "blank import registering database/sql driver \"sqlite\"",
+          "notes": "Imported only from jobqueue _test.go files."
+        }
+      ]
+    },
+    {
+      "package": "go standard library",
+      "version": "go 1.27",
+      "verified": false,
+      "symbols": [
+        {
+          "name": "ImportDir",
+          "import_path": "go/build",
+          "signature": "func (ctxt *build.Context) ImportDir(dir string, mode build.ImportMode) (*build.Package, error)",
+          "notes": "Selects GoFiles/TestGoFiles/XTestGoFiles; *build.NoGoError means not a package."
+        },
+        {
+          "name": "ParseFile",
+          "import_path": "go/parser",
+          "signature": "func ParseFile(fset *token.FileSet, filename string, src any, mode parser.Mode) (*ast.File, error)",
+          "notes": "Do not use the deprecated ParseDir/ast.Package."
+        },
+        {
+          "name": "NewFromFiles",
+          "import_path": "go/doc",
+          "signature": "func NewFromFiles(fset *token.FileSet, files []*ast.File, importPath string, opts ...any) (*doc.Package, error)",
+          "notes": "Default mode keeps exported identifiers only."
+        },
+        {
+          "name": "Node",
+          "import_path": "go/format",
+          "signature": "func Node(dst io.Writer, fset *token.FileSet, node any) error"
+        }
+      ]
+    }
+  ]
+}

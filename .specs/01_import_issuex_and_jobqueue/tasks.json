@@ -1,0 +1,417 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v2.json",
+  "spec_id": "01",
+  "spec_name": "import_issuex_and_jobqueue",
+  "schema_version": 2,
+  "test_commands": {
+    "all_tests": "make check",
+    "linter": "go vet ./...",
+    "spec_tests": "go test -short ./..."
+  },
+  "dependencies": [],
+  "tasks": [
+    {
+      "id": 1,
+      "kind": "implement",
+      "title": "Create the module skeleton and the Makefile quality gate",
+      "criteria": [
+        "01-REQ-7.1",
+        "01-REQ-7.2",
+        "01-REQ-7.3"
+      ],
+      "tests": [
+        "TS-01-40",
+        "TS-01-41",
+        "TS-01-42"
+      ],
+      "steps": [
+        "Create go.mod with `module github.com/agent-fox-dev/aflib` and `go 1.27`, with no replace directive and no requires yet. The uuid and sqlite requires are added with the jobqueue import (task 3). Do not commit a go.work",
+        "Add `doc.go` is NOT created here (task 6 owns it). If `go build ./...` fails on an empty module, make the targets tolerate it (`go build ./...` with no packages is fine)",
+        "Write the Makefile with the targets help, build (`go build ./...`), test (`go test ./... -count=1`), test-short (`go test -short ./...`), coverage, fmt (gofmt -w over tracked Go files, via `git ls-files '*.go'`), vet (`go vet ./...`), lint, check (fmt vet lint test-short, in that order, stopping at the first failure), check-release (fmt vet lint test), doc, tidy (`go mod tidy`), clean and api-golden. Use .PHONY and no MODULES loop",
+        "lint: if `command -v golangci-lint` succeeds run `golangci-lint run`, else print `golangci-lint not installed: lint skipped` to stdout and exit 0",
+        "doc: discover public packages (go list, skipping /internal/ paths, docs, examples, testdata), compute the golden name (directory relative to the module root with `/` replaced by `_`; root is `aflib`), and write `go doc -all <importpath>` to docs/generated/<name>.txt, creating the directory first",
+        "api-golden: `go test -run TestExportedAPI . -update`",
+        "Write the three tests as one-off handoff checks run by hand: TS-01-40 with `make -n <target>` for every target, TS-01-41 in a scratch copy with an injected vet failure (confirm no later step runs), TS-01-42 with a PATH lacking golangci-lint. Do not commit tests of Makefile content (steering forbids it)",
+        "Run `make check` and confirm it exits 0 on the skeleton"
+      ],
+      "touches": [
+        "go.mod",
+        "Makefile"
+      ],
+      "done_when": [
+        "`make -n` succeeds for all 14 targets",
+        "`make lint` exits 0 with a skip message when golangci-lint is absent from PATH"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 2,
+      "kind": "implement",
+      "title": "Import issuex from agent-fox at 84fb9b4 as its own commit",
+      "criteria": [
+        "01-REQ-2"
+      ],
+      "tests": [
+        "TS-01-7",
+        "TS-01-8",
+        "TS-01-9",
+        "TS-01-10",
+        "TS-01-11"
+      ],
+      "steps": [
+        "Clone https://github.com/agent-fox-dev/agent-fox into a temp dir outside this repository and resolve 84fb9b4 to its full 40-character hash with `git rev-parse`. If the clone or the commit cannot be fetched, STOP: commit nothing under issuex/, and report the unreachable commit in the handoff (01-REQ-2.5). Never reconstruct from memory, docs or another commit",
+        "Extract with `git archive <fullhash> issuex | tar -x -C <this repo>` so every file, including testdata/ and non-Go files, lands under issuex/ at the same relative path. Never copy from the working tree",
+        "Rewrite only import-path lines in `_test.go` files: `github.com/agent-fox-dev/agent-fox/issuex` (and sub-paths) to `github.com/agent-fox-dev/aflib/issuex`. Leave package clauses `issuex` and `issuex_test` and all non-test files untouched",
+        "Run `go build ./issuex/...` and `go vet ./issuex/...`; issuex is standard-library only so go.mod needs no changes. Do not edit copied code if a problem appears: leave it for task 4/5 (findings rules)",
+        "Run `go test -short -count=1 -v ./issuex/...`; confirm exit 0 and that the GitLab smoke test is SKIP (TS-01-11)",
+        "Verify by one-off scripts run outside the repo: TS-01-7 (`git ls-tree -r <fullhash> issuex` path set equals issuex/ path set; non-test .go files byte-equal to `git show`), TS-01-8 (line-diff each test file; only import lines differ), TS-01-10 (run the fetch+archive procedure against `file:///nonexistent` in a scratch copy: non-zero exit, no issuex/ created)",
+        "Create one commit containing only issuex/ and any go.mod/go.sum change. The message is conventional (`feat(issuex): import from agent-fox`) and names https://github.com/agent-fox-dev/agent-fox and the full hash. No Co-Authored-By. Verify with `git show --stat` (TS-01-9)"
+      ],
+      "touches": [
+        "issuex/"
+      ],
+      "depends_on": [
+        1
+      ],
+      "done_when": [
+        "`go test -short -count=1 ./issuex/...` exits 0",
+        "the issuex commit message contains the full 40-character source hash"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 3,
+      "kind": "implement",
+      "title": "Import jobqueue from hub at ce8e1b8 and pin uuid and sqlite",
+      "criteria": [
+        "01-REQ-3",
+        "01-REQ-1.1"
+      ],
+      "tests": [
+        "TS-01-1",
+        "TS-01-12",
+        "TS-01-13",
+        "TS-01-14",
+        "TS-01-15",
+        "TS-01-16",
+        "TS-01-17"
+      ],
+      "steps": [
+        "Clone https://github.com/agent-fox-dev/hub into a temp dir outside this repository and resolve ce8e1b8 to its full hash. If it cannot be fetched STOP: commit nothing under jobqueue/ and report it in the handoff (01-REQ-3.5)",
+        "Read hub's go.mod at that hash with `git show <fullhash>:go.mod` and note the exact versions of github.com/google/uuid and modernc.org/sqlite",
+        "Extract with `git archive <fullhash> internal/jobqueue`, placing every file under jobqueue/ at the same relative path (strip the `internal/` prefix, e.g. `tar -x --strip-components=1` into a temp dir then move)",
+        "Rewrite only import lines in `_test.go` files: `github.com/agent-fox-dev/hub/internal/jobqueue` to `github.com/agent-fox-dev/aflib/jobqueue`. Non-test files stay byte-identical",
+        "Add the two requires at hub's exact versions (`go get github.com/google/uuid@<v> modernc.org/sqlite@<v>`, then `go mod tidy`, accepting `// indirect` additions). Confirm go.mod has no replace and go.sum exists and is tracked",
+        "Run `go build ./...`, `go vet ./jobqueue/...` and `go test -short -count=1 ./jobqueue/...`; exit 0 required. If a non-test file imports another package of hub, STOP without copying it (01-REQ-4.2). If a test imports a hub helper or another module, leave handling to task 4",
+        "Verify with one-off scripts run outside the repo: TS-01-12 (path set and byte identity against `git show`), TS-01-13 (only import-line diffs), TS-01-15 (fetch from `file:///nonexistent` fails, no jobqueue/ created), TS-01-16 (parser.ImportsOnly over jobqueue: non-test imports are stdlib or uuid, only _test.go imports modernc.org/sqlite), TS-01-1 (go.mod module/go lines, pinned versions equal hub's, no replace, go.sum tracked, go.work untracked)",
+        "Create one commit containing only jobqueue/, go.mod and go.sum. The message (`feat(jobqueue): import from hub`) names https://github.com/agent-fox-dev/hub and the full hash. Verify with `git show --stat` (TS-01-14)"
+      ],
+      "touches": [
+        "jobqueue/",
+        "go.mod",
+        "go.sum"
+      ],
+      "depends_on": [
+        2
+      ],
+      "done_when": [
+        "`go test -short -count=1 ./jobqueue/...` exits 0",
+        "go.mod versions of uuid and modernc.org/sqlite equal hub's at ce8e1b8"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 4,
+      "kind": "implement",
+      "title": "Apply the import findings rules, verify the clean-checkout build, and write the erratum",
+      "criteria": [
+        "01-REQ-1.4",
+        "01-REQ-1.5",
+        "01-REQ-1.6",
+        "01-REQ-4.1",
+        "01-REQ-4.2",
+        "01-REQ-4.3",
+        "01-REQ-4.4",
+        "01-REQ-4.6",
+        "01-REQ-4.7",
+        "01-REQ-8.4"
+      ],
+      "tests": [
+        "TS-01-4",
+        "TS-01-5",
+        "TS-01-6",
+        "TS-01-18",
+        "TS-01-19",
+        "TS-01-20",
+        "TS-01-21",
+        "TS-01-23",
+        "TS-01-24",
+        "TS-01-49"
+      ],
+      "steps": [
+        "Run `gofmt -l .`, `go vet ./...` and `go test -short -count=1 ./...`. For each failure apply the fixed rules: a gofmt/vet failure gets the smallest edit that does not change an exported declaration; a test helper from a source module is copied into `internal/<helper>/` so test edits stay import-path-only; an extra test-only module is added to go.mod and recorded as a ruling in docs/architecture.md; an environmental failure is fixed outside the test file. No test may be deleted, skipped, t.Skip-gated or weakened. If a non-test file imports another package of its source module, STOP, do not edit or copy, and report it as blocking",
+        "Compare the sets of Test*, Fuzz* and Example* function names per package with the source commits (TS-01-18) by a one-off script; scan non-test imports for github.com/agent-fox-dev/agent-fox and github.com/agent-fox-dev/hub paths (TS-01-19, including a fixture file that must be reported), and test imports for the same (TS-01-20)",
+        "Check TS-01-21: list direct requires beyond uuid and sqlite and where each is imported; if none, the erratum says so",
+        "Check TS-01-23 and TS-01-24: list every non-test file differing from its source, confirm each is in the erratum, confirm every testdata path the tests open exists",
+        "Run the clean-checkout checks in a fresh `git clone` of this repo into a temp dir (TS-01-4: `go build ./...` and `go test -short ./...`; TS-01-6: unset GITHUB_TOKEN, GITLAB_TOKEN, GITHUB_API_URL, GITLAB_API_URL and the GitLab smoke variable named in the copied test, run `go test -short -v ./...`, confirm the smoke test is SKIP). Run `go list -m all` and confirm no path starts with github.com/agent-fox-dev/hub, github.com/agent-fox-dev/agent-fox or the AgentKit module path (TS-01-5)",
+        "Write docs/errata/01_import_issuex_and_jobqueue.md with: source repository and full hash for each package (agent-fox 84fb9b4 resolved, hub ce8e1b8 resolved); an explanation that requirement IDs in copied test names and comments (e.g. `10-REQ-6.E3`, `01-REQ-4.8`) refer to the source repositories' spec archives, not this repository's specs, even where numbers collide; every finding (edits, helpers, extra modules, env fixes) or the statement that there were no findings; and the note that lint exclusions are added in the next task",
+        "Run `make check` and confirm exit 0 (lint may be skipped)"
+      ],
+      "touches": [
+        "docs/errata/01_import_issuex_and_jobqueue.md",
+        "issuex/",
+        "jobqueue/",
+        "internal/",
+        "go.mod",
+        "go.sum"
+      ],
+      "depends_on": [
+        3
+      ],
+      "done_when": [
+        "`go test -short -count=1 ./...` exits 0 in a fresh clone",
+        "the erratum exists and names both full hashes"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 5,
+      "kind": "implement",
+      "title": "Add .golangci.yml from hub with path-scoped issuex exclusions",
+      "criteria": [
+        "01-REQ-4.5",
+        "01-REQ-7.5",
+        "01-REQ-7.6"
+      ],
+      "tests": [
+        "TS-01-22",
+        "TS-01-44",
+        "TS-01-45"
+      ],
+      "steps": [
+        "Extract hub's `.golangci.yml` with `git show <hub full hash>:.golangci.yml` and copy it to this repository's root",
+        "Remove every rule that names a hub path; keep everything else byte-for-byte",
+        "Run `golangci-lint run` (install it if absent for this check). `jobqueue` must pass as it did in hub. For each finding in issuex add a path-scoped exclusion (path regex limited to `issuex/`) preceded by a YAML comment pointing at `docs/errata/01_import_issuex_and_jobqueue.md`. Never edit the copied code to satisfy the linter",
+        "If a finding in jobqueue appears, resolve it by path-scoped exclusion too, with the same comment, and list it in the erratum",
+        "Append each exclusion (path, linter, reason) to the erratum under the findings list",
+        "Diff the config against hub's (TS-01-44): removed rules name hub paths, added rules are only the commented issuex exclusions, nothing else differs",
+        "Confirm `golangci-lint run` exits 0 with no findings (TS-01-45, TS-01-22) and `make check` exits 0"
+      ],
+      "touches": [
+        ".golangci.yml",
+        "docs/errata/01_import_issuex_and_jobqueue.md"
+      ],
+      "depends_on": [
+        4
+      ],
+      "done_when": [
+        "`golangci-lint run` exits 0",
+        "every exclusion has a comment naming the erratum file"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 6,
+      "kind": "implement",
+      "title": "Add doc.go and the TestExportedAPI golden guard with committed goldens",
+      "criteria": [
+        "01-REQ-1.3",
+        "01-REQ-5"
+      ],
+      "tests": [
+        "TS-01-3",
+        "TS-01-25",
+        "TS-01-26",
+        "TS-01-27",
+        "TS-01-28",
+        "TS-01-29",
+        "TS-01-30",
+        "TS-01-31",
+        "TS-01-32"
+      ],
+      "steps": [
+        "Create `doc.go`: `package aflib` with only a package doc comment naming github.com/agent-fox-dev/aflib, saying it holds the packages shared by the agent-fox programs, with one line each for `issuex` and `jobqueue`. No declarations, no imports",
+        "Write `api_test.go` in package `aflib_test` using only the standard library. Testable helpers: discover(root) uses go/build ImportDir (treat *build.NoGoError as not a package), skips testdata, names starting with `.` or `_`, docs, examples and any internal path element, and returns the sorted golden names (root is `aflib`); render(dir) parses GoFiles with parser.ParseFile(ParseComments), calls doc.NewFromFiles (not ParseDir), nils Doc on GenDecl/FuncDecl and Doc/Comment on struct and interface fields, then prints Consts, Vars, Funcs, then each Type followed by its Consts, Vars, Funcs, Methods through format.Node, each declaration followed by a blank line, with no package clause or import path; never exec `go doc`",
+        "Add compare/check helpers: a mismatch message names the package, the first differing line (number and both texts) and `make api-golden`; a package without testdata/api/<name>.golden fails naming the package; a golden matching no package fails naming the file; a `-update` flag (flag.Bool) rewrites every discovered golden and removes orphans",
+        "Add TestExportedAPI running on the real module root over testdata/api/<name>.golden",
+        "Create fixtures under testdata/fixtures/ (a render fixture with expected.golden covering exported/unexported consts, vars, funcs, a type with associated const/var/constructor/methods and all comment kinds; a discovery fixture tree with a, b/c, testdata, .hidden, _tmp, docs, examples, internal/x and a test-only dir; missing-golden and orphan-golden fixtures). Fixture .go files live under testdata so the go tool ignores them",
+        "Write TS-01-25, 26, 28, 29, 30 as unit tests over the fixtures; TS-01-32 as a property test using testing/quick or a seeded generator checking determinism and invariance under comment-only and unexported-only mutations; TS-01-3 parsing doc.go and checking aflib.golden is 0 bytes",
+        "Generate the goldens with `make api-golden` (produces testdata/api/aflib.golden empty, issuex.golden, jobqueue.golden). Write TS-01-27 and confirm the goldens equal renderings of the source packages at the two source commits (one-off comparison against a render of the source tree)",
+        "TS-01-31: in a scratch copy with a stale, a missing and an orphaned golden, run `go test -run TestExportedAPI . -update` then without `-update`; the second run exits 0",
+        "Run `make check` and confirm exit 0"
+      ],
+      "touches": [
+        "doc.go",
+        "api_test.go",
+        "testdata/api/",
+        "testdata/fixtures/"
+      ],
+      "depends_on": [
+        3
+      ],
+      "done_when": [
+        "`go test -run TestExportedAPI -count=1 .` passes",
+        "testdata/api/aflib.golden is empty"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 7,
+      "kind": "implement",
+      "title": "Add the TestDependencies guard and the package-layout check",
+      "criteria": [
+        "01-REQ-1.2",
+        "01-REQ-6"
+      ],
+      "tests": [
+        "TS-01-2",
+        "TS-01-33",
+        "TS-01-34",
+        "TS-01-35",
+        "TS-01-36",
+        "TS-01-37",
+        "TS-01-38",
+        "TS-01-39"
+      ],
+      "steps": [
+        "Write `deps_test.go` in package `aflib_test`, standard library only (its own imports must be stdlib or this module), sharing the discovery helper from api_test.go where useful",
+        "Implement a go.mod parser by lines handling `require ( ... )` blocks, single-line `require`, `// indirect` and `replace` in single-line and block form, with no golang.org/x/mod and no network",
+        "Implement isStdlib(path): true exactly when the first `/`-separated element contains no dot",
+        "Implement checkGoMod: fail naming `go.mod` and the replace directive text; fail naming `go.mod` and the module for a direct (non-indirect) require outside the allowlist {github.com/google/uuid, modernc.org/sqlite} plus modules ruled in under 01-REQ-4.4 (read from task 4's outcome)",
+        "Implement checkImports using go/build file lists and parser.ImportsOnly: non-test files of public packages may import stdlib, github.com/google/uuid or packages of this module only (modernc.org/sqlite fails); test files and files of internal/ packages may also import the test allowlist. Messages name the file and the offending import",
+        "Add fixtures under testdata/fixtures/deps/ (go.mod variants: single-line and block replace, direct bad require single-line and block, indirect, allowed; fixture packages with good and bad imports) and write unit tests TS-01-33, 34, 35, 36, 38 and a property test TS-01-37 for isStdlib",
+        "Add TestDependencies over the committed tree (TS-01-39)",
+        "Add a layout test for TS-01-2: `go list ./...` (or discovery) non-internal packages are exactly aflib, aflib/issuex, aflib/jobqueue; no cmd/ directory; any internal/<helper> is listed in the erratum",
+        "Run `make check` and confirm exit 0"
+      ],
+      "touches": [
+        "deps_test.go",
+        "testdata/fixtures/deps/"
+      ],
+      "depends_on": [
+        3
+      ],
+      "done_when": [
+        "`go test -run 'TestDependencies' -count=1 .` passes",
+        "failure messages name the file and the offending directive or import"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 8,
+      "kind": "implement",
+      "title": "Write reference docs, README and generated docs",
+      "criteria": [
+        "01-REQ-7.4",
+        "01-REQ-8.1",
+        "01-REQ-8.2",
+        "01-REQ-8.3",
+        "01-REQ-8.5"
+      ],
+      "tests": [
+        "TS-01-43",
+        "TS-01-46",
+        "TS-01-47",
+        "TS-01-48",
+        "TS-01-50"
+      ],
+      "steps": [
+        "Read testdata/api/issuex.golden and jobqueue.golden and the copied package comments so every identifier named in the docs exists",
+        "Write docs/api.md: state there is no REST API, map aflib (doc only), issuex and jobqueue with purpose and principal exported identifiers, point to docs/generated/",
+        "Write docs/architecture.md: each package's origin (repository and full hash), import graph (neither imports the other; issuex stdlib only; jobqueue stdlib plus uuid; tests also use modernc.org/sqlite), the allowlist and the rule that a new module needs a ruling there first, test layout (tests next to code, root guard tests, goldens in testdata/api/), jobqueue caller contract (caller-owned *sql.DB, WAL and busy_timeout, idempotent handlers), versioning (vX.Y.Z tags, first v0.1.0 cut by a human after both consumers switch, pre-1.0 breaking change bumps the minor version and is recorded in errata), and any internal/ helpers or rulings from task 4",
+        "Write docs/cli.md with one line: the repository has no command",
+        "Search issuex non-test files for os.Getenv, os.LookupEnv and os.Environ; write docs/configuration.md listing EVERY variable found, its precedence below explicit Options.Token/BaseURL, the `git remote get-url` and `gh` fallbacks, that hub sets everything explicitly, and that jobqueue reads no environment (confirm by search)",
+        "Rewrite README.md: the module, both packages, `go get github.com/agent-fox-dev/aflib`, `make check`, `make doc`, `make api-golden`, links to docs/ files that exist",
+        "Run `make doc` (as steering requires, before finalising docs) and commit docs/generated/aflib.txt, issuex.txt, jobqueue.txt; confirm `git status --porcelain docs/generated` is empty on a second `make doc` (TS-01-43)",
+        "Review the docs against TS-01-46, 47, 48, 50 as handoff checks (identifiers exist in goldens, needles present, links resolve); do not commit tests of doc content",
+        "Run `make check` and confirm exit 0"
+      ],
+      "touches": [
+        "docs/api.md",
+        "docs/architecture.md",
+        "docs/cli.md",
+        "docs/configuration.md",
+        "docs/generated/",
+        "README.md"
+      ],
+      "depends_on": [
+        5,
+        6,
+        7
+      ],
+      "done_when": [
+        "docs/generated contains exactly aflib.txt, issuex.txt and jobqueue.txt",
+        "every environment variable read by issuex appears in docs/configuration.md"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 9,
+      "kind": "implement",
+      "title": "Rewrite the AGENTS.md, CLAUDE.md and steering repository sections",
+      "criteria": [
+        "01-REQ-9"
+      ],
+      "tests": [
+        "TS-01-51",
+        "TS-01-52"
+      ],
+      "steps": [
+        "Read AGENTS.md and .specs/steering.md. Note the section headings and keep a copy of both originals (git show HEAD:<file>) for comparison",
+        "In AGENTS.md rewrite only the Repository Layout section: doc.go (root package, doc only), issuex/, jobqueue/, root guard tests and testdata/api/, docs/ and docs/generated/, .specs/, tests living next to the code. Remove agentkit.Config, examples/ and containers/. Leave every other section byte-identical",
+        "Make CLAUDE.md byte-identical to AGENTS.md (copy the file; keep a symlink as is if it already is one)",
+        "In .specs/steering.md rewrite only Repository Specifics: aflib is a library with no REST API and no command, docs/api.md is the map of its public packages, it is a single module with no nested modules. Remove AgentKit and MODULES. Leave other sections byte-identical",
+        "Verify as handoff checks by section-wise diff against the originals (TS-01-51, TS-01-52) and `cmp AGENTS.md CLAUDE.md`; do not commit tests of doc content",
+        "Run `make check` and confirm exit 0"
+      ],
+      "touches": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".specs/steering.md"
+      ],
+      "depends_on": [
+        1
+      ],
+      "done_when": [
+        "`cmp AGENTS.md CLAUDE.md` reports no difference",
+        "only the Repository Layout and Repository Specifics sections differ from the originals"
+      ],
+      "state": "pending"
+    },
+    {
+      "id": 10,
+      "kind": "integration",
+      "title": "Verify the quality gate, golden guard, dependency guard and doc generation end to end",
+      "tests": [
+        "TS-01-53",
+        "TS-01-54",
+        "TS-01-55",
+        "TS-01-56"
+      ],
+      "steps": [
+        "Write and run TS-01-53: fresh clone of the repository alone, run `make check`; confirm fmt, vet, lint (or skip message) and test-short run in order, the GitLab smoke test is skipped, TestExportedAPI and TestDependencies pass, exit 0",
+        "Write and run TS-01-54 in a scratch copy: change an exported signature in jobqueue, `make check` fails naming jobqueue, the first differing line and `make api-golden`; run `make api-golden`; `make check` then exits 0",
+        "Write and run TS-01-55 in a scratch copy: add a replace directive to go.mod, confirm `make check` fails naming go.mod and the directive; revert, add a non-allowlisted import to a non-test issuex file, confirm it fails naming file and import",
+        "Write and run TS-01-56: `make doc`, confirm exactly aflib.txt, issuex.txt, jobqueue.txt and a clean `git status --porcelain docs/generated`",
+        "Trace 01-PATH-1 to 01-PATH-4 through the real Makefile and tests: confirm `check` calls fmt, vet, lint, test-short; test-short runs TestExportedAPI and TestDependencies; `api-golden` passes -update to the test; `doc` uses the same package discovery and names as the golden test; no stub remains",
+        "For every criterion with a contract (e.g. 01-REQ-5.4, 6.1, 6.3), confirm the failure message producer is the code that TestExportedAPI and TestDependencies actually call, not only helper unit tests",
+        "Search every file in all tasks' `touches` (excluding the byte-identical copied packages) for TODO, FIXME, NotImplemented, panic(\"not implemented\") and bare stubs; remove any found in new code",
+        "Confirm `make check` exits 0 on the final tree and the full gate (`make check-release`) is left to the user, noted in the handoff"
+      ],
+      "touches": [
+        "Makefile",
+        "api_test.go",
+        "deps_test.go"
+      ],
+      "depends_on": [
+        8,
+        9
+      ],
+      "done_when": [
+        "`make check` passes in a fresh clone",
+        "all four execution paths are live in the real Makefile and tests"
+      ],
+      "state": "pending"
+    }
+  ]
+}
