@@ -42,7 +42,7 @@
         "`make -n` succeeds for all 14 targets",
         "`make lint` exits 0 with a skip message when golangci-lint is absent from PATH"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,
@@ -77,7 +77,7 @@
         "`go test -short -count=1 ./issuex/...` exits 0",
         "the issuex commit message contains the full 40-character source hash"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 3,
@@ -118,7 +118,7 @@
         "`go test -short -count=1 ./jobqueue/...` exits 0",
         "go.mod versions of uuid and modernc.org/sqlite equal hub's at ce8e1b8"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 4,
@@ -172,7 +172,7 @@
         "`go test -short -count=1 ./...` exits 0 in a fresh clone",
         "the erratum exists and names both full hashes"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 5,
@@ -208,7 +208,7 @@
         "`golangci-lint run` exits 0",
         "every exclusion has a comment naming the erratum file"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 6,
@@ -253,7 +253,7 @@
         "`go test -run TestExportedAPI -count=1 .` passes",
         "testdata/api/aflib.golden is empty"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 7,
@@ -295,7 +295,7 @@
         "`go test -run 'TestDependencies' -count=1 .` passes",
         "failure messages name the file and the offending directive or import"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 8,
@@ -343,7 +343,7 @@
         "docs/generated contains exactly aflib.txt, issuex.txt and jobqueue.txt",
         "every environment variable read by issuex appears in docs/configuration.md"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 9,
@@ -376,7 +376,7 @@
         "`cmp AGENTS.md CLAUDE.md` reports no difference",
         "only the Repository Layout and Repository Specifics sections differ from the originals"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 10,
@@ -411,7 +411,7 @@
         "`make check` passes in a fresh clone",
         "all four execution paths are live in the real Makefile and tests"
       ],
-      "state": "pending"
+      "state": "done"
     }
   ]
 }

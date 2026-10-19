@@ -87,6 +87,7 @@ grepping for declarations.
 
 ## Repository Specifics
 
-AgentKit is a library with no REST API: `docs/api.md` is the map of its public
-Go packages. The nested modules are listed in `MODULES` in the `Makefile`;
-`make test`, `make vet`, `make lint` and `make tidy` run in each of them.
+aflib is a library with no REST API and no command: `docs/api.md` is the map of
+its public Go packages, and `docs/cli.md` says there is no command. It is a
+single module with no nested modules, so every `make` target runs once, in the
+repository root.
