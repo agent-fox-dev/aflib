@@ -295,7 +295,7 @@
         "`go test -run 'TestDependencies' -count=1 .` passes",
         "failure messages name the file and the offending directive or import"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 8,
