@@ -208,7 +208,7 @@
         "`golangci-lint run` exits 0",
         "every exclusion has a comment naming the erratum file"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 6,
