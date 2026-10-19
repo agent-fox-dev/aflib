@@ -77,7 +77,7 @@
         "`go test -short -count=1 ./issuex/...` exits 0",
         "the issuex commit message contains the full 40-character source hash"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 3,
