@@ -343,7 +343,7 @@
         "docs/generated contains exactly aflib.txt, issuex.txt and jobqueue.txt",
         "every environment variable read by issuex appears in docs/configuration.md"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 9,

@@ -117,3 +117,13 @@ default lint configuration the unedited copies fail `make check` (22 issues),
 and on Go 1.27 `go vet ./...` and `go test ./...` exit 1 on a module with no
 package, so the skeleton could not pass its own gate without one. Both files
 have the final content the spec fixes for them.
+
+**E6. The `jobqueue` caller contract is not in the package comment.** The spec
+says the package comment states that the caller configures WAL and
+`busy_timeout` and that handlers are idempotent. The package comment is two
+lines (`jobqueue/jobqueue.go:1`). The WAL and `busy_timeout` requirement is
+stated in the comments on the `jobs` table DDL and on `InitSchema`
+(`jobqueue/schema.go:9-12`, `:49-52`), and handler idempotency in the doc of
+`HandlerFunc` (`jobqueue/jobqueue.go:33-37`). `docs/architecture.md` states the
+contract and points to those places. `issuex` has no package comment at all, so
+`docs/api.md` describes it from the doc of `Client`.
