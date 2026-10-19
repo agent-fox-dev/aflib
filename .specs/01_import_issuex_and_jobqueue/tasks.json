@@ -172,7 +172,7 @@
         "`go test -short -count=1 ./...` exits 0 in a fresh clone",
         "the erratum exists and names both full hashes"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 5,
