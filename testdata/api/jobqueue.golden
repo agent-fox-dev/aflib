@@ -1,0 +1,107 @@
+const (
+	StatusQueued     = "queued"
+	StatusRunning    = "running"
+	StatusCompleted  = "completed"
+	StatusFailed     = "failed"
+	StatusDeadLetter = "dead_letter"
+	StatusCancelled  = "cancelled"
+)
+
+var ErrNotCancellable = errors.New("job is not in a cancellable status")
+
+func ContextWithJobID(ctx context.Context, jobID string) context.Context
+
+func InitSchema(db *sql.DB) error
+
+func JobIDFromContext(ctx context.Context) string
+
+func MigrateGroupKey(db *sql.DB) error
+
+func MigrateProgress(db *sql.DB) error
+
+type EnqueueParams struct {
+	Type         string
+	Key          string
+	Nonce        string
+	Payload      json.RawMessage
+	SubmittedBy  string
+	Group        string
+	ExcludeJobID string
+}
+
+type HandlerFunc func(ctx context.Context, payload json.RawMessage) (result any, retryable bool, err error)
+
+type Job struct {
+	ID          string
+	Type        string
+	Key         string
+	GroupKey    string
+	Nonce       string
+	Status      string
+	Payload     json.RawMessage
+	Result      json.RawMessage
+	Error       string
+	Progress    json.RawMessage
+	RetryCount  int
+	AvailableAt time.Time
+	SubmittedBy string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type ListOpts struct {
+	Status string
+	Key    string
+	Offset int
+	Limit  int
+}
+
+type Option func(*Queue) error
+
+func WithGracePeriod(d time.Duration) Option
+
+func WithPollInterval(d time.Duration) Option
+
+func WithWorkers(n int) Option
+
+type Queue struct{}
+
+func New(db *sql.DB, logger *slog.Logger, opts ...Option) (*Queue, error)
+
+func (q *Queue) CancelJob(jobID string) error
+
+func (q *Queue) CountByStatus(typeName string) (map[string]int, error)
+
+func (q *Queue) Enqueue(params EnqueueParams) (jobID string, duplicate bool, err error)
+
+func (q *Queue) GetByID(jobID string) (*Job, error)
+
+func (q *Queue) ListByKey(typeName string, key string) ([]*Job, error)
+
+func (q *Queue) ListByKeyPrefix(typeName, prefix string, limit int) ([]*Job, error)
+
+func (q *Queue) ListByType(typeName string, opts ListOpts) ([]*Job, error)
+
+func (q *Queue) Register(typeName string, handler HandlerFunc, policy *RetryPolicy) error
+
+func (q *Queue) RequeueDeadLetter(jobID string) (string, error)
+
+func (q *Queue) Shutdown()
+
+func (q *Queue) Start() error
+
+func (q *Queue) Stop() error
+
+func (q *Queue) UpdateProgress(jobID string, data any) error
+
+func (q *Queue) Wait() error
+
+type RetryPolicy struct {
+	Base       time.Duration
+	Multiplier float64
+	Cap        time.Duration
+	MaxRetries int
+}
+
+func DefaultRetryPolicy() RetryPolicy
+

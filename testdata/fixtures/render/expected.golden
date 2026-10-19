@@ -1,0 +1,33 @@
+const (
+	Red = iota
+	Green
+)
+
+const Version = "1"
+
+var DefaultMode = ModeA
+
+var ErrBad = errors.New("bad")
+
+func Helper(n int) string
+
+type Mode int
+
+const (
+	ModeA Mode = iota
+	ModeB
+)
+
+type Reader interface {
+	Read() (string, error)
+}
+
+type Widget struct {
+	Name string
+	Tags []string
+}
+
+func New(name string) *Widget
+
+func (w *Widget) Size() int
+

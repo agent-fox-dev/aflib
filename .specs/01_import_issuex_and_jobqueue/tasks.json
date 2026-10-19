@@ -253,7 +253,7 @@
         "`go test -run TestExportedAPI -count=1 .` passes",
         "testdata/api/aflib.golden is empty"
       ],
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 7,

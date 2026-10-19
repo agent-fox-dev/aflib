@@ -1,0 +1,367 @@
+const (
+	GitHubMaxBodyLength = 65536
+	GitLabMaxBodyLength = 1048576
+)
+
+const MaxResponseBodyBytes = 8 << 20
+
+const MaxResponseBytes = MaxResponseBodyBytes
+
+var (
+	ErrNoToken          = errors.New("no authentication token configured")
+	ErrNotFound         = errors.New("resource not found")
+	ErrConflict         = errors.New("conflict")
+	ErrRateLimited      = errors.New("rate limited")
+	ErrUnsupportedForge = errors.New("unsupported forge")
+	ErrAmbiguousForge   = errors.New("ambiguous forge")
+)
+
+func HandleResponse(resp *http.Response, authenticated bool) error
+
+func HandleResponseStatus(statusCode int, authenticated bool) error
+
+func IsConflict(err error) bool
+
+func IsNoToken(err error) bool
+
+func IsNotFound(err error) bool
+
+func IsRateLimited(err error) bool
+
+func LimitResponseBody(r io.Reader) io.Reader
+
+func MaxBodyLength(c Client) int
+
+func ReadResponse(resp *http.Response) ([]byte, error)
+
+func ReadResponseBody(r io.Reader) ([]byte, error)
+
+func RegisterAdapter(forge ForgeType, factory func(Options) (Client, error))
+
+func SetGitHubSleep(c Client, fn func(time.Duration))
+
+func SetGitLabSleep(c Client, fn func(time.Duration))
+
+type BodyLimiter interface {
+	MaxBodyLength() int
+}
+
+type ChangedFile struct {
+	Filename  string `json:"filename"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+}
+
+type CheckRun struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	Summary    string `json:"summary,omitempty"`
+	URL        string `json:"url,omitempty"`
+}
+
+type Client interface {
+	Authenticated() bool
+	Close() error
+	GetRepository(ctx context.Context, repo Repo) (Repository, error)
+	CreateIssue(ctx context.Context, repo Repo, req CreateIssueRequest) (Issue, error)
+	ReadIssue(ctx context.Context, ref IssueRef) (IssueThread, error)
+	UpdateIssue(ctx context.Context, ref IssueRef, req UpdateIssueRequest) (Issue, error)
+	CloseIssue(ctx context.Context, ref IssueRef, comment string) error
+	ListIssues(ctx context.Context, repo Repo, filter IssueFilter) (IssueList, error)
+	AddComment(ctx context.Context, ref IssueRef, body string) (string, error)
+	ListComments(ctx context.Context, ref IssueRef) (CommentList, error)
+	AddLabels(ctx context.Context, ref IssueRef, labels []string) error
+	RemoveLabel(ctx context.Context, ref IssueRef, label string) error
+	CreateLabel(ctx context.Context, repo Repo, label Label) error
+	CreatePullRequest(ctx context.Context, repo Repo, req CreatePullRequestRequest) (PullRequest, error)
+	ReadPullRequest(ctx context.Context, ref IssueRef) (PullRequest, error)
+	ReadChangedFiles(ctx context.Context, ref IssueRef) ([]ChangedFile, error)
+	GetPRState(ctx context.Context, ref IssueRef) (PRState, error)
+	GetCIChecks(ctx context.Context, ref IssueRef) ([]CheckRun, error)
+	GetPRReviews(ctx context.Context, ref IssueRef) ([]Review, error)
+	PostReviewComment(ctx context.Context, ref IssueRef, body string) error
+	MergePullRequest(ctx context.Context, ref IssueRef, opts MergeOptions) (MergeResult, error)
+	ClosePullRequest(ctx context.Context, ref IssueRef) error
+}
+
+func New(userAgent string) (Client, error)
+
+func NewGitHub(o Options) (Client, error)
+
+func NewGitLab(o Options) (Client, error)
+
+func NewNoOp() Client
+
+func NewWithOptions(o Options) (Client, error)
+
+type Comment struct {
+	ID        int64     `json:"id,omitempty"`
+	Body      string    `json:"body"`
+	User      User      `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	HTMLURL   string    `json:"html_url,omitempty"`
+}
+
+type CommentList struct {
+	Comments  []Comment `json:"comments"`
+	Truncated bool      `json:"truncated"`
+}
+
+type CreateIssueRequest struct {
+	Title     string   `json:"title"`
+	Body      string   `json:"body,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	Assignees []string `json:"assignees,omitempty"`
+}
+
+type CreatePullRequestRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body,omitempty"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+	Draft bool   `json:"draft,omitempty"`
+}
+
+type ForgeClient Client
+
+type ForgeType string
+
+const (
+	ForgeTypeUnknown ForgeType = ""
+	ForgeTypeGitHub  ForgeType = "github"
+	ForgeTypeGitLab  ForgeType = "gitlab"
+)
+
+func DetectForge(o Options) (ForgeType, error)
+
+type HTTPError struct {
+	Method             string
+	Path               string
+	Status             int
+	Message            string
+	RetryAfterHeader   string
+	RateLimitReset     string
+	RateLimitRemaining string
+}
+
+func HTTPErrorFromResponse(resp *http.Response) *HTTPError
+
+func (e *HTTPError) Error() string
+
+func (e *HTTPError) RetryAfter() (time.Duration, bool)
+
+type Issue struct {
+	Number    int        `json:"number"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	State     string     `json:"state"`
+	URL       string     `json:"url,omitempty"`
+	HTMLURL   string     `json:"html_url,omitempty"`
+	Author    User       `json:"author"`
+	Labels    []string   `json:"labels,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	ClosedAt  *time.Time `json:"closed_at,omitempty"`
+	IsPR      bool       `json:"is_pr"`
+}
+
+type IssueFilter struct {
+	State     string   `json:"state,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	Assignee  string   `json:"assignee,omitempty"`
+	Sort      string   `json:"sort,omitempty"`
+	Direction string   `json:"direction,omitempty"`
+	Limit     int      `json:"limit,omitempty"`
+}
+
+type IssueList struct {
+	Issues     []Issue `json:"issues"`
+	Incomplete bool    `json:"incomplete"`
+}
+
+type IssueRef struct {
+	Repo          Repo `json:"repo"`
+	Number        int  `json:"number"`
+	IsPullRequest bool `json:"is_pull_request"`
+}
+
+func ParseIssueURL(s string) (IssueRef, bool)
+
+func (r IssueRef) String() string
+
+func (r IssueRef) URL() string
+
+type IssueThread struct {
+	Issue       Issue     `json:"issue"`
+	Comments    []Comment `json:"comments"`
+	Truncated   bool      `json:"truncated"`
+	CommentsErr error     `json:"comments_err,omitempty"`
+}
+
+type Label struct {
+	Name        string `json:"name"`
+	Color       string `json:"color,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type MergeMethod string
+
+const (
+	MergeMethodDefault MergeMethod = ""
+	MergeMethodMerge   MergeMethod = "merge"
+	MergeMethodSquash  MergeMethod = "squash"
+	MergeMethodRebase  MergeMethod = "rebase"
+)
+
+type MergeOptions struct {
+	Method        MergeMethod `json:"method,omitempty"`
+	CommitTitle   string      `json:"commit_title,omitempty"`
+	CommitMessage string      `json:"commit_message,omitempty"`
+	SHA           string      `json:"sha,omitempty"`
+}
+
+type MergeResult struct {
+	Merged  bool   `json:"merged"`
+	SHA     string `json:"sha,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type NoOpClient struct{}
+
+func (c *NoOpClient) AddComment(ctx context.Context, ref IssueRef, body string) (string, error)
+
+func (c *NoOpClient) AddLabels(ctx context.Context, ref IssueRef, labels []string) error
+
+func (c *NoOpClient) Authenticated() bool
+
+func (c *NoOpClient) Close() error
+
+func (c *NoOpClient) CloseIssue(ctx context.Context, ref IssueRef, comment string) error
+
+func (c *NoOpClient) ClosePullRequest(ctx context.Context, ref IssueRef) error
+
+func (c *NoOpClient) CreateIssue(ctx context.Context, repo Repo, req CreateIssueRequest) (Issue, error)
+
+func (c *NoOpClient) CreateLabel(ctx context.Context, repo Repo, label Label) error
+
+func (c *NoOpClient) CreatePullRequest(ctx context.Context, repo Repo, req CreatePullRequestRequest) (PullRequest, error)
+
+func (c *NoOpClient) GetCIChecks(ctx context.Context, ref IssueRef) ([]CheckRun, error)
+
+func (c *NoOpClient) GetPRReviews(ctx context.Context, ref IssueRef) ([]Review, error)
+
+func (c *NoOpClient) GetPRState(ctx context.Context, ref IssueRef) (PRState, error)
+
+func (c *NoOpClient) GetRepository(ctx context.Context, repo Repo) (Repository, error)
+
+func (c *NoOpClient) ListComments(ctx context.Context, ref IssueRef) (CommentList, error)
+
+func (c *NoOpClient) ListIssues(ctx context.Context, repo Repo, filter IssueFilter) (IssueList, error)
+
+func (c *NoOpClient) MergePullRequest(ctx context.Context, ref IssueRef, opts MergeOptions) (MergeResult, error)
+
+func (c *NoOpClient) PostReviewComment(ctx context.Context, ref IssueRef, body string) error
+
+func (c *NoOpClient) ReadChangedFiles(ctx context.Context, ref IssueRef) ([]ChangedFile, error)
+
+func (c *NoOpClient) ReadIssue(ctx context.Context, ref IssueRef) (IssueThread, error)
+
+func (c *NoOpClient) ReadPullRequest(ctx context.Context, ref IssueRef) (PullRequest, error)
+
+func (c *NoOpClient) RemoveLabel(ctx context.Context, ref IssueRef, label string) error
+
+func (c *NoOpClient) UpdateIssue(ctx context.Context, ref IssueRef, req UpdateIssueRequest) (Issue, error)
+
+type Options struct {
+	BaseURL    string
+	Token      string
+	HTTPClient *http.Client
+	UserAgent  string
+	NoOp       bool
+	Repo       Repo
+	RemoteURL  string
+	Dir        string
+}
+
+type PRState struct {
+	Number  int    `json:"number"`
+	State   string `json:"state"`
+	Merged  bool   `json:"merged"`
+	HeadSHA string `json:"head_sha"`
+}
+
+type PullRequest struct {
+	Number     int        `json:"number"`
+	Title      string     `json:"title"`
+	Body       string     `json:"body"`
+	State      string     `json:"state"`
+	URL        string     `json:"url,omitempty"`
+	HTMLURL    string     `json:"html_url,omitempty"`
+	Draft      bool       `json:"draft"`
+	Merged     bool       `json:"merged"`
+	HeadSHA    string     `json:"head_sha"`
+	HeadBranch string     `json:"head_branch"`
+	BaseBranch string     `json:"base_branch"`
+	Author     User       `json:"author"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	ClosedAt   *time.Time `json:"closed_at,omitempty"`
+	MergedAt   *time.Time `json:"merged_at,omitempty"`
+}
+
+type Repo struct {
+	Owner string `json:"owner"`
+	Name  string `json:"name"`
+	Host  string `json:"host,omitempty"`
+}
+
+func DetectRepo(dir string) (Repo, bool)
+
+func ParseRemote(remote string) (Repo, bool)
+
+func ParseRepo(s string) (Repo, bool)
+
+func (r Repo) String() string
+
+func (r Repo) Valid() bool
+
+type RepoPermissions struct {
+	Push  bool `json:"push"`
+	Pull  bool `json:"pull"`
+	Admin bool `json:"admin"`
+}
+
+type Repository struct {
+	FullName         string          `json:"full_name"`
+	DefaultBranch    string          `json:"default_branch"`
+	Private          bool            `json:"private"`
+	Archived         bool            `json:"archived"`
+	Permissions      RepoPermissions `json:"permissions"`
+	AllowMergeCommit bool            `json:"allow_merge_commit,omitempty"`
+	AllowSquashMerge bool            `json:"allow_squash_merge,omitempty"`
+	AllowRebaseMerge bool            `json:"allow_rebase_merge,omitempty"`
+}
+
+type Review struct {
+	Author      User      `json:"author"`
+	State       string    `json:"state"`
+	Body        string    `json:"body"`
+	SubmittedAt time.Time `json:"submitted_at"`
+}
+
+type UpdateIssueRequest struct {
+	Title     string   `json:"title,omitempty"`
+	Body      string   `json:"body,omitempty"`
+	State     string   `json:"state,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	Assignees []string `json:"assignees,omitempty"`
+}
+
+type User struct {
+	Login string `json:"login"`
+}
+
