@@ -9,14 +9,53 @@ alone, without comments, are pinned in `testdata/api/<name>.golden`; a change to
 one fails `make check` until `make api-golden` accepts it on purpose (see
 [`architecture.md`](architecture.md)).
 
-The module path is `github.com/agent-fox-dev/aflib`. It has three public
-packages and no command.
+The module path is `github.com/agent-fox-dev/aflib`. It has four public
+packages and one command, `issue` ([`cli.md`](cli.md)), whose output the
+`envelope` package describes.
 
 ## aflib
 
 `github.com/agent-fox-dev/aflib`, the root package. It consists of `doc.go`, a
-package doc comment that names the module and its two packages. It declares
-nothing and imports nothing, and its golden file is empty.
+package doc comment that names the module, its packages and its command. It
+declares nothing and imports nothing, and its golden file is empty.
+
+## envelope
+
+`github.com/agent-fox-dev/aflib/envelope`: the JSON object the agent-fox
+commands write to stdout, as Go types, and the result of the `issue` command.
+Standard library and `issuex`, whose value types the result reuses. Its JSON is
+the envelope of the spec repository's commands (`spec`, `specr`, `speca`)
+without the properties only a model-driven command writes (`artifacts`,
+`input`, `model`, `usage`), so a decoder of either reads the other.
+
+**The envelope.** `Envelope[R]` has `Tool`, `Version`, `OK`, `Status`,
+`ExitCode`, `Summary`, `Error`, `Warnings`, `Result` (of type `R`),
+`SideEffects`, `Next`, `DurationMS` and `StartedAt`. `Decode[R]` reads one
+envelope and refuses anything after it; `Encode` writes one, indented, without
+escaping `<`, `>` and `&`. `ExitOK`, `ExitFailed` and `ExitUsage` are the exit
+codes and `StatusFor` their words.
+
+**Failures.** `ErrorInfo` (`Stage`, `Category`, `Message`, `Retryable`,
+`Resumable`, `FixHint`) is an `error`; `WithCause` and `Unwrap` carry the
+failure it reports, in the process that raised it. `FixHint` names a `Flag`,
+the `Env` variables or the `Valid` values. The categories are `CategoryUsage`,
+`CategoryAuth`, `CategoryInput`, `CategoryConflict`, `CategoryAPI`,
+`CategoryAborted` and `CategoryInternal`; `RetryableFor` is true for `api` and
+`aborted`.
+
+**Beside the result.** `Warning` (`Code`, `Severity`, `Stage`, `Message`) with
+`WarnCode`, `SeverityHigh` and `SeverityLow`, and the codes
+`WarnCommentsUnreadable`, `WarnCommentsTruncated` and `WarnAssigneesIgnored`;
+`SideEffect` (`Action`, `Kind`, `Target`, `URL`, `OK`, `Warning`), one write to
+a forge; `Next` (`Tool`, `Input`, `Flags`, `Why`), a suggested call.
+
+**The issue command.** `IssueEnvelope` is `Envelope[*IssueResult]` and
+`DecodeIssue` reads it. `IssueResult` has `Forge`, `Repo`, `Host` and `Ref`, then
+the fields of each form: `Issue`, `Comments`, `CommentsTruncated`,
+`PullRequest`, `Checks`, `Reviews` and `Files` for a thread; `Repository`;
+`Issues` and `Incomplete` for `--list`; `CommentURL`, `Label`, `Merge` and
+`NoChange` for the writes; `DryRun` and `Planned` (`PlannedWrite`: `Action`,
+`Kind`, `Target`, `Detail`) under `--dry-run`. The value types are `issuex`'s.
 
 ## issuex
 

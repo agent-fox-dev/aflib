@@ -140,3 +140,16 @@ not refer to unexported identifiers, which is what `TestRenderProperties_TS_01_3
 generates. And whether a type declaration is an alias (`type A = B`) is kept,
 because `=` changes what the declaration means; the position that carries it is
 the one position the renderer does not clear (`normalise` in `api_test.go`).
+
+## Amendments after the spec
+
+**A1. The module has a command and a fourth package (PRD 02).** 01-REQ-1.2 pins
+the module to the packages `aflib`, `issuex` and `jobqueue` and says there is no
+`cmd/`. [PRD 02](../prd/02-ship-an-issue-command.md) and
+[ADR 01](../adr/01-ship-a-command-for-the-forge-client.md) amend it: the module
+also has the public package `envelope` and one command, `cmd/issue`.
+`TestPackageLayout_TS_01_2` keeps its ID and now pins the four packages and the
+one command; `discover` (`api_test.go`) skips a `package main`, which has no
+importable API and no golden, and `TestDiscover_TS_01_25` has a fixture for it
+(`testdata/fixtures/discovery/cmd/tool`). `TestDocGo_TS_01_3` checks that
+`doc.go` names `envelope` and `cmd/issue` as well.

@@ -1,0 +1,131 @@
+const (
+	ExitOK     = 0
+	ExitFailed = 1
+	ExitUsage  = 2
+)
+
+const (
+	SeverityHigh = "high"
+	SeverityLow  = "low"
+)
+
+const (
+	CategoryUsage    = "usage"
+	CategoryAuth     = "auth"
+	CategoryInput    = "input"
+	CategoryConflict = "conflict"
+	CategoryAPI      = "api"
+	CategoryAborted  = "aborted"
+	CategoryInternal = "internal"
+)
+
+func Encode(v any) ([]byte, error)
+
+func RetryableFor(category string) bool
+
+func StatusFor(code int) string
+
+type Envelope[R any] struct {
+	Tool        string       `json:"tool" description:"the command that wrote this envelope"`
+	Version     string       `json:"version" description:"the command's build identity"`
+	OK          bool         `json:"ok" description:"true only when the command did the whole job it was asked to do; never true beside a non-zero exit_code or an error"`
+	Status      string       `json:"status" description:"the outcome in words, derived from exit_code: done (0), failed (1) or usage (2)"`
+	ExitCode    int          `json:"exit_code" description:"the process exit code: 0 done, 1 failed, 2 usage error"`
+	Summary     string       `json:"summary" description:"one sentence on the outcome, at most 200 characters"`
+	Error       *ErrorInfo   `json:"error,omitempty" description:"what failed and where; present exactly when ok is false"`
+	Warnings    []Warning    `json:"warnings,omitempty" description:"what went differently than intended without stopping the call"`
+	Result      R            `json:"result,omitzero" description:"the command's own result"`
+	SideEffects []SideEffect `json:"side_effects,omitempty" description:"every write to a forge, in the order it was made, a failed one included"`
+	Next        []Next       `json:"next,omitempty" description:"the invocations a caller would plausibly make next"`
+	DurationMS  int64        `json:"duration_ms" description:"wall-clock time of the call, in milliseconds"`
+	StartedAt   string       `json:"started_at" description:"when the call started, RFC 3339 in UTC"`
+}
+
+func Decode[R any](data []byte) (Envelope[R], error)
+
+type ErrorInfo struct {
+	Stage     string   `json:"stage" description:"the step that failed"`
+	Category  string   `json:"category" description:"the kind of failure, which says whether re-running could help; an open set"`
+	Message   string   `json:"message" description:"what failed, in words"`
+	Retryable bool     `json:"retryable" description:"whether re-running the identical command could succeed"`
+	Resumable bool     `json:"resumable" description:"whether re-running the same input continues the work rather than starting it over"`
+	FixHint   *FixHint `json:"fix_hint,omitempty" description:"a mechanical remedy, where one is known"`
+}
+
+func (e *ErrorInfo) Error() string
+
+func (e *ErrorInfo) Unwrap() error
+
+func (e *ErrorInfo) WithCause(err error) *ErrorInfo
+
+type FixHint struct {
+	Flag  string   `json:"flag,omitempty" description:"the flag to change"`
+	Env   []string `json:"env,omitempty" description:"the environment variables, one of which supplies what is missing"`
+	Valid []string `json:"valid,omitempty" description:"the values the flag accepts here"`
+}
+
+type IssueEnvelope = Envelope[*IssueResult]
+
+func DecodeIssue(data []byte) (IssueEnvelope, error)
+
+type IssueResult struct {
+	Forge             string               `json:"forge" description:"the forge the call went to: github or gitlab"`
+	Repo              string               `json:"repo" description:"the repository, owner/name; a GitLab owner may hold subgroups"`
+	Host              string               `json:"host,omitempty" description:"the repository's web host, when the input or the origin remote named one"`
+	Ref               string               `json:"ref,omitempty" description:"the thread: owner/name#N for an issue, owner/name!N for a pull or merge request; runnable as the input of the next call"`
+	Issue             *issuex.Issue        `json:"issue,omitempty" description:"the issue, or the issue view of a pull request: title, body, state, labels, author"`
+	Comments          []issuex.Comment     `json:"comments,omitzero" description:"the thread's comments, oldest first; [] when it has none. Read forms only"`
+	CommentsTruncated bool                 `json:"comments_truncated,omitempty" description:"the thread has more comments than were read (the client reads at most 500)"`
+	PullRequest       *issuex.PullRequest  `json:"pull_request,omitempty" description:"the pull or merge request: branches, head commit, draft and merged"`
+	Checks            []issuex.CheckRun    `json:"checks,omitzero" description:"with --checks, the CI checks of the head commit"`
+	Reviews           []issuex.Review      `json:"reviews,omitzero" description:"with --reviews, the reviews of the pull request"`
+	Files             []issuex.ChangedFile `json:"files,omitzero" description:"with --files, the files the pull request changes"`
+	Repository        *issuex.Repository   `json:"repository,omitempty" description:"the repository: default branch, visibility, the caller's permissions and the merge methods allowed"`
+	Issues            []issuex.Issue       `json:"issues,omitzero" description:"with --list, the issues that match, without pull requests; [] when none does"`
+	Incomplete        bool                 `json:"incomplete,omitempty" description:"with --list, more issues match than --limit allowed"`
+	CommentURL        string               `json:"comment_url,omitempty" description:"with --comment, the web URL of the comment"`
+	Label             *issuex.Label        `json:"label,omitempty" description:"with --create-label, the label asked for; a label that already existed is not an error"`
+	Merge             *issuex.MergeResult  `json:"merge,omitempty" description:"with --merge, the forge's answer: merged, the merge commit and its message"`
+	NoChange          bool                 `json:"no_change,omitempty" description:"the thread was already in the state asked for (--close on a closed one, --reopen on an open one); nothing was written"`
+	DryRun            bool                 `json:"dry_run,omitempty" description:"the call ran under --dry-run: nothing was written, and planned lists what would have been"`
+	Planned           []PlannedWrite       `json:"planned,omitzero" description:"under --dry-run, the writes the call would have made, in order"`
+}
+
+type Next struct {
+	Tool  string   `json:"tool" description:"the command to run"`
+	Input string   `json:"input" description:"its one positional input; empty when the call takes none"`
+	Flags []string `json:"flags" description:"the flags to add, each value its own element"`
+	Why   string   `json:"why" description:"why a caller would run it"`
+}
+
+type PlannedWrite struct {
+	Action string `json:"action" description:"what would be written, as SideEffect.Action"`
+	Kind   string `json:"kind,omitempty" description:"what it would be written to: issue, pull_request or repository"`
+	Target string `json:"target" description:"the thread or the repository it would be written to"`
+	Detail string `json:"detail,omitempty" description:"what it would carry, in words: the fields, labels or method"`
+}
+
+type SideEffect struct {
+	Action  string   `json:"action" description:"what was written: create_issue, comment, edit, add_labels, remove_label, close, reopen, create_label, create_pull_request, review or merge"`
+	Kind    string   `json:"kind,omitempty" description:"what it was written to: issue, pull_request or repository"`
+	Target  string   `json:"target" description:"the thread (owner/repo#N, owner/repo!N) or the repository (owner/repo) written to"`
+	URL     string   `json:"url,omitempty" description:"the web URL of what the write made, when the forge returned one"`
+	OK      bool     `json:"ok" description:"whether the forge accepted the write"`
+	Warning WarnCode `json:"warning,omitempty" description:"the warning raised about this write, if any"`
+}
+
+type WarnCode string
+
+const (
+	WarnCommentsUnreadable WarnCode = "comments_unreadable"
+	WarnCommentsTruncated  WarnCode = "comments_truncated"
+	WarnAssigneesIgnored   WarnCode = "assignees_ignored"
+)
+
+type Warning struct {
+	Code     WarnCode `json:"code" description:"a stable code naming the cause; an open set"`
+	Severity string   `json:"severity" description:"high when the result is not quite what it appears to be, low when informational"`
+	Stage    string   `json:"stage" description:"the step that raised it"`
+	Message  string   `json:"message" description:"what happened, in words"`
+}
+

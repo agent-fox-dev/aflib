@@ -1,0 +1,35 @@
+Command issue reads and writes the issues, pull requests and repositories of
+GitHub and GitLab through the issuex client, for an agent or a person with a
+shell.
+
+    issue [flags] <ref>                      an issue or pull request: its thread
+    issue [flags] <repo>                     a repository: its metadata
+    issue [<repo>] --list [filters]          the issues of a repository
+    issue [<repo>] --create --title T        open an issue
+    issue <ref> --comment --body B           comment on a thread
+    issue <ref> --edit [changes]             change title, body, labels, assignees
+    issue <ref> --close | --reopen           close or reopen a thread
+    issue [<repo>] --create-label NAME       create a label
+    issue [<repo>] --create-pr --head H --base B --title T
+    issue <pr> --review --body B             post a review comment
+    issue <pr> --merge [--method M]          merge a pull request
+
+It takes at most one input, a reference to a thread or a repository,
+and writes exactly one JSON object to stdout, the envelope of
+package github.com/agent-fox-dev/aflib/envelope, whose result is an
+envelope.IssueResult. The forms are flags, not subcommands; without a form flag
+the call reads and changes nothing. Every write to the forge is listed in the
+envelope's side_effects. The token comes from the environment (GITHUB_TOKEN or
+GH_TOKEN, GITLAB_TOKEN), never from a flag.
+
+FUNCTIONS
+
+func Main(argv []string, stdin io.Reader, stdout, stderr io.Writer) int
+    Main parses argv, runs the call and writes one envelope to stdout.
+    It returns the exit code.
+
+    Two paths are for a person and print text instead: --version, and -h/--help
+    or a bare invocation, which print the help to stderr. A bare invocation also
+    writes a usage envelope when stdout is not a terminal, so a program piping
+    stdout still gets one object to parse.
+

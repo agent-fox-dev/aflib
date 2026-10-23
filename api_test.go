@@ -85,11 +85,12 @@ func walkPackages(root string, skip func(name string) bool, visit func(rel strin
 }
 
 // discover returns the public packages under root, sorted by name. A directory
-// is one when it has non-test Go files for the host build context.
+// is one when it has non-test Go files for the host build context and is not
+// a command: package main exports nothing another package can import.
 func discover(root string) ([]publicPkg, error) {
 	var pkgs []publicPkg
 	err := walkPackages(root, skippedDir, func(dir string, p *build.Package) error {
-		if len(p.GoFiles) > 0 {
+		if len(p.GoFiles) > 0 && p.Name != "main" {
 			pkgs = append(pkgs, publicPkg{Name: goldenName(dir), Dir: dir})
 		}
 		return nil
@@ -391,8 +392,8 @@ func copyTree(t *testing.T, src string) string {
 }
 
 // TestDocGo_TS_01_3 verifies TS-01-3 (01-REQ-1.3): doc.go holds only a package
-// doc comment that names the module and its two packages, and the root golden
-// is empty.
+// doc comment that names the module and its packages, and the root golden is
+// empty.
 func TestDocGo_TS_01_3(t *testing.T) {
 	f, err := parser.ParseFile(token.NewFileSet(), "doc.go", nil, parser.ParseComments)
 	if err != nil {
@@ -408,7 +409,7 @@ func TestDocGo_TS_01_3(t *testing.T) {
 		t.Fatal("doc.go has no package doc comment")
 	}
 	text := strings.Join(strings.Fields(f.Doc.Text()), " ")
-	for _, want := range []string{"github.com/agent-fox-dev/aflib", "shared by the agent-fox programs", "issuex", "jobqueue"} {
+	for _, want := range []string{"github.com/agent-fox-dev/aflib", "shared by the agent-fox programs", "envelope", "issuex", "jobqueue", "cmd/issue"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the doc comment does not mention %q", want)
 		}
@@ -420,7 +421,7 @@ func TestDocGo_TS_01_3(t *testing.T) {
 
 // TestDiscover_TS_01_25 verifies TS-01-25 (01-REQ-5.1): public packages are
 // found, and testdata, dot, underscore, docs, examples and internal
-// directories and directories with only test files are skipped.
+// directories, directories with only test files and commands are skipped.
 func TestDiscover_TS_01_25(t *testing.T) {
 	got, err := discover(filepath.Join("testdata", "fixtures", "discovery"))
 	if err != nil {
@@ -437,7 +438,7 @@ func TestDiscover_TS_01_25(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"aflib", "issuex", "jobqueue"}; !slices.Equal(names(got), want) {
+	if want := []string{"aflib", "envelope", "issuex", "jobqueue"}; !slices.Equal(names(got), want) {
 		t.Errorf("module packages = %v, want %v", names(got), want)
 	}
 }

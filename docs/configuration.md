@@ -1,8 +1,10 @@
 # Configuration
 
-aflib has no configuration file and no flags. Only `issuex` reads the
-environment; `jobqueue` is configured by the options passed to `jobqueue.New`
-and reads **no environment** variable.
+aflib has no configuration file. Only `issuex` reads the environment; `jobqueue`
+is configured by the options passed to `jobqueue.New` and reads **no
+environment** variable, and `envelope` reads none either. The `issue` command
+reads the environment through `issuex` and nothing else (see *The issue
+command* below); its flags are in [`cli.md`](cli.md#flags).
 
 ## Environment read by issuex
 
@@ -75,3 +77,29 @@ environment nor a working directory; `af --local` uses the environment and the
 fallback. Hub at the commit this package was copied from does not import `issuex`
 yet, so that is the intended use, not something this repository can show. With a
 remote URL that names a forge, detection stops at step 2 and never starts `git`.
+
+## The issue command
+
+`issue` reads no variable of its own. Every variable it depends on is one of the
+five above, read by `issuex` when the command builds its client with
+`issuex.NewWithOptions` (or `NewGitHub` / `NewGitLab` under `--forge`), and the
+rules above decide where a token is sent. In particular:
+
+- **The token comes from the environment only.** There is no `--token`: a token
+  in argv is visible in the process list. A write form without a token is
+  refused before anything is read, with `fix_hint.env` naming `GITHUB_TOKEN` and
+  `GH_TOKEN`, or `GITLAB_TOKEN`. A read of a public repository needs none.
+- **`--dir`** (default `.`) is `Options.Dir`: the working tree whose origin remote
+  names the repository for a short reference (`42`, `#42`, `!7`) or a form with
+  no input, and decides the forge when nothing else does. `git` is run only
+  then.
+- **A self-hosted forge** is named with `GITHUB_API_URL` or `GITLAB_API_URL`; a
+  URL or remote on a host neither names, and whose name holds neither `github`
+  nor `gitlab`, is refused and nothing is sent to it.
+- **`--forge github|gitlab`** chooses the adapter for a repository named without
+  a host (`owner/repo`) when the environment configures both forges, or neither
+  and there is no origin remote. The adapter then reads its own variables
+  (`NewGitHub`: `GITHUB_API_URL`, `GITHUB_TOKEN`, `GH_TOKEN`; `NewGitLab`:
+  `GITLAB_API_URL`, `GITLAB_TOKEN`). With a host, `--forge` must agree with it.
+- **`--timeout`** (default `2m`) bounds the whole call; each request is also
+  bounded by `issuex`'s own client timeout of 30 seconds.
