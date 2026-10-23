@@ -87,7 +87,7 @@ grepping for declarations.
 
 ## Repository Specifics
 
-aflib is a library with no REST API and no command: `docs/api.md` is the map of
-its public Go packages, and `docs/cli.md` says there is no command. It is a
-single module with no nested modules, so every `make` target runs once, in the
-repository root.
+aflib is a library with no REST API and one command, `issue` (`cmd/issue`):
+`docs/api.md` is the map of its public Go packages, and `docs/cli.md` is the
+command's reference. It is a single module with no nested modules, so every
+`make` target runs once, in the repository root.
