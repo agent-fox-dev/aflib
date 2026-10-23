@@ -1,13 +1,11 @@
 package aflib_test
 
 import (
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"math/rand/v2"
 	"os"
 	pathpkg "path"
@@ -365,19 +363,28 @@ func TestDependencies(t *testing.T) {
 	}
 }
 
-// TestPackageLayout_TS_01_2 verifies TS-01-2 (01-REQ-1.2): the module has
-// exactly the packages aflib, issuex and jobqueue, and no cmd directory. An
-// internal/ helper copied under 01-REQ-4.3 would be recorded in the erratum and
-// in docs/architecture.md; steering forbids tests of docs, so that is reviewed.
+// TestPackageLayout_TS_01_2 verifies TS-01-2 (01-REQ-1.2), as PRD 02 amends
+// it: the module has exactly the public packages aflib, envelope, issuex and
+// jobqueue, and one command, cmd/issue (ADR 01). An internal/ helper copied
+// under 01-REQ-4.3 would be recorded in the erratum and in
+// docs/architecture.md; steering forbids tests of docs, so that is reviewed.
 func TestPackageLayout_TS_01_2(t *testing.T) {
 	pkgs, err := discover(".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"aflib", "issuex", "jobqueue"}; !slices.Equal(names(pkgs), want) {
+	if want := []string{"aflib", "envelope", "issuex", "jobqueue"}; !slices.Equal(names(pkgs), want) {
 		t.Errorf("public packages = %v, want %v", names(pkgs), want)
 	}
-	if _, err := os.Stat("cmd"); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("the module has a cmd directory (stat: %v)", err)
+	entries, err := os.ReadDir("cmd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cmds []string
+	for _, e := range entries {
+		cmds = append(cmds, e.Name())
+	}
+	if want := []string{"issue"}; !slices.Equal(cmds, want) {
+		t.Errorf("cmd/ holds %v, want %v", cmds, want)
 	}
 }

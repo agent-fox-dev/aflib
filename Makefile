@@ -12,9 +12,19 @@ ROOT_NAME := aflib
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  %-16s %s\n", $$1, $$2}'
 
+# The build identity make install stamps into the issue command.
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS    := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildTime=$(BUILD_TIME)
+
 .PHONY: build
-build: ## Build all packages
+build: ## Build all packages and the issue command
 	go build ./...
+
+.PHONY: install
+install: ## Install the issue command into $GOBIN, stamped with git describe
+	go install -ldflags "$(LDFLAGS)" ./cmd/issue
 
 .PHONY: test
 test: ## Run all Go tests
