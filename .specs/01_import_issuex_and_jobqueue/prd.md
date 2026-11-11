@@ -4,9 +4,8 @@ spec_name: "import_issuex_and_jobqueue"
 title: "Import issuex and jobqueue into aflib"
 status: "active"
 created_at: "2026-10-19T17:05:52.36554Z"
-updated_at: "2026-10-19T17:05:52.36554Z"
 intent_hash: "31f5ba012e2ac1428e1deb86af0383d97a1e9d08dcfb6c3e962efeec18647591"
-schema_version: 2
+schema_version: 3
 source: "docs/prd/01-import-issuex-and-jobqueue.md"
 ---
 ## Intent
@@ -230,3 +229,14 @@ None of the external code below lives in this repository, so none of it could be
 | `modernc.org/sqlite` | registers the `database/sql` driver `"sqlite"` (blank import in tests) | unverified. Test-only. Version is hub's at `ce8e1b8`. |
 | `golangci-lint` (tool) | `golangci-lint run` with `.golangci.yml` | unverified. Version and config format follow hub's config. |
 | Standard library (R5, R6) | `build.ImportDir(dir string, mode build.ImportMode) (*build.Package, error)`; `parser.ParseFile(fset *token.FileSet, filename string, src any, mode parser.Mode) (*ast.File, error)`; `doc.NewFromFiles(fset *token.FileSet, files []*ast.File, importPath string, opts ...any) (*doc.Package, error)`; `format.Node(dst io.Writer, fset *token.FileSet, node any) error` | standard library, stable. Not read in the repository. Do not use `parser.ParseDir`/`ast.Package`, which are deprecated. |
+
+## Glossary
+
+- **allowlist**: The modules the code may depend on. Non-test code of public packages: the standard library, `github.com/google/uuid`, and this module's packages. Test files and `internal/` files may also use `modernc.org/sqlite`, plus any module ruled in under 01-REQ-4.
+- **clean checkout**: A fresh clone of this repository alone: no sibling repositories, no `go.work`, no `replace` directive.
+- **erratum**: The file `docs/errata/01_import_issuex_and_jobqueue.md`. It records the source commits, the meaning of the foreign requirement IDs in the copied tests, and every finding.
+- **finding**: A case where copied code does not work unchanged in this module. Each one is handled by the fixed rules of 01-REQ-4 and listed in the erratum.
+- **golden**: The committed file `testdata/api/<name>.golden`. It holds the comment-free, go/format-rendered exported declarations of one public package.
+- **golden name**: A package's directory relative to the module root, with `/` replaced by `_`. The root package's golden name is `aflib`.
+- **public package**: A directory of this module that contains non-test Go files for the host build context. It is not `testdata`, does not start with `.` or `_`, is not `docs` or `examples`, and has no `internal` path element.
+- **source commit**: The fixed commit a package is copied from: agent-fox `84fb9b4` for `issuex/`, hub `ce8e1b8` for `internal/jobqueue/`. Each is resolved to its full hash and read from git objects, never from a working tree.

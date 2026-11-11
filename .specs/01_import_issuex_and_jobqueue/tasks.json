@@ -1,8 +1,8 @@
 {
-  "$schema": "https://agent-fox.dev/schemas/tasks.v2.json",
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
   "spec_id": "01",
   "spec_name": "import_issuex_and_jobqueue",
-  "schema_version": 2,
+  "schema_version": 3,
   "test_commands": {
     "all_tests": "make check",
     "linter": "go vet ./...",
@@ -12,17 +12,11 @@
   "tasks": [
     {
       "id": 1,
-      "kind": "implement",
       "title": "Create the module skeleton and the Makefile quality gate",
       "criteria": [
-        "01-REQ-7.1",
-        "01-REQ-7.2",
-        "01-REQ-7.3"
-      ],
-      "tests": [
-        "TS-01-40",
-        "TS-01-41",
-        "TS-01-42"
+        "REQ-7.1",
+        "REQ-7.2",
+        "REQ-7.3"
       ],
       "steps": [
         "Create go.mod with `module github.com/agent-fox-dev/aflib` and `go 1.27`, with no replace directive and no requires yet. The uuid and sqlite requires are added with the jobqueue import (task 3). Do not commit a go.work",
@@ -41,22 +35,13 @@
       "done_when": [
         "`make -n` succeeds for all 14 targets",
         "`make lint` exits 0 with a skip message when golangci-lint is absent from PATH"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 2,
-      "kind": "implement",
       "title": "Import issuex from agent-fox at 84fb9b4 as its own commit",
       "criteria": [
-        "01-REQ-2"
-      ],
-      "tests": [
-        "TS-01-7",
-        "TS-01-8",
-        "TS-01-9",
-        "TS-01-10",
-        "TS-01-11"
+        "REQ-2"
       ],
       "steps": [
         "Clone https://github.com/agent-fox-dev/agent-fox into a temp dir outside this repository and resolve 84fb9b4 to its full 40-character hash with `git rev-parse`. If the clone or the commit cannot be fetched, STOP: commit nothing under issuex/, and report the unreachable commit in the handoff (01-REQ-2.5). Never reconstruct from memory, docs or another commit",
@@ -76,25 +61,14 @@
       "done_when": [
         "`go test -short -count=1 ./issuex/...` exits 0",
         "the issuex commit message contains the full 40-character source hash"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 3,
-      "kind": "implement",
       "title": "Import jobqueue from hub at ce8e1b8 and pin uuid and sqlite",
       "criteria": [
-        "01-REQ-3",
-        "01-REQ-1.1"
-      ],
-      "tests": [
-        "TS-01-1",
-        "TS-01-12",
-        "TS-01-13",
-        "TS-01-14",
-        "TS-01-15",
-        "TS-01-16",
-        "TS-01-17"
+        "REQ-3",
+        "REQ-1.1"
       ],
       "steps": [
         "Clone https://github.com/agent-fox-dev/hub into a temp dir outside this repository and resolve ce8e1b8 to its full hash. If it cannot be fetched STOP: commit nothing under jobqueue/ and report it in the handoff (01-REQ-3.5)",
@@ -117,36 +91,22 @@
       "done_when": [
         "`go test -short -count=1 ./jobqueue/...` exits 0",
         "go.mod versions of uuid and modernc.org/sqlite equal hub's at ce8e1b8"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 4,
-      "kind": "implement",
       "title": "Apply the import findings rules, verify the clean-checkout build, and write the erratum",
       "criteria": [
-        "01-REQ-1.4",
-        "01-REQ-1.5",
-        "01-REQ-1.6",
-        "01-REQ-4.1",
-        "01-REQ-4.2",
-        "01-REQ-4.3",
-        "01-REQ-4.4",
-        "01-REQ-4.6",
-        "01-REQ-4.7",
-        "01-REQ-8.4"
-      ],
-      "tests": [
-        "TS-01-4",
-        "TS-01-5",
-        "TS-01-6",
-        "TS-01-18",
-        "TS-01-19",
-        "TS-01-20",
-        "TS-01-21",
-        "TS-01-23",
-        "TS-01-24",
-        "TS-01-49"
+        "REQ-1.4",
+        "REQ-1.5",
+        "REQ-1.6",
+        "REQ-4.1",
+        "REQ-4.2",
+        "REQ-4.3",
+        "REQ-4.4",
+        "REQ-4.6",
+        "REQ-4.7",
+        "REQ-8.4"
       ],
       "steps": [
         "Run `gofmt -l .`, `go vet ./...` and `go test -short -count=1 ./...`. For each failure apply the fixed rules: a gofmt/vet failure gets the smallest edit that does not change an exported declaration; a test helper from a source module is copied into `internal/<helper>/` so test edits stay import-path-only; an extra test-only module is added to go.mod and recorded as a ruling in docs/architecture.md; an environmental failure is fixed outside the test file. No test may be deleted, skipped, t.Skip-gated or weakened. If a non-test file imports another package of its source module, STOP, do not edit or copy, and report it as blocking",
@@ -171,22 +131,15 @@
       "done_when": [
         "`go test -short -count=1 ./...` exits 0 in a fresh clone",
         "the erratum exists and names both full hashes"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 5,
-      "kind": "implement",
       "title": "Add .golangci.yml from hub with path-scoped issuex exclusions",
       "criteria": [
-        "01-REQ-4.5",
-        "01-REQ-7.5",
-        "01-REQ-7.6"
-      ],
-      "tests": [
-        "TS-01-22",
-        "TS-01-44",
-        "TS-01-45"
+        "REQ-4.5",
+        "REQ-7.5",
+        "REQ-7.6"
       ],
       "steps": [
         "Extract hub's `.golangci.yml` with `git show <hub full hash>:.golangci.yml` and copy it to this repository's root",
@@ -207,27 +160,14 @@
       "done_when": [
         "`golangci-lint run` exits 0",
         "every exclusion has a comment naming the erratum file"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 6,
-      "kind": "implement",
       "title": "Add doc.go and the TestExportedAPI golden guard with committed goldens",
       "criteria": [
-        "01-REQ-1.3",
-        "01-REQ-5"
-      ],
-      "tests": [
-        "TS-01-3",
-        "TS-01-25",
-        "TS-01-26",
-        "TS-01-27",
-        "TS-01-28",
-        "TS-01-29",
-        "TS-01-30",
-        "TS-01-31",
-        "TS-01-32"
+        "REQ-1.3",
+        "REQ-5"
       ],
       "steps": [
         "Create `doc.go`: `package aflib` with only a package doc comment naming github.com/agent-fox-dev/aflib, saying it holds the packages shared by the agent-fox programs, with one line each for `issuex` and `jobqueue`. No declarations, no imports",
@@ -252,26 +192,14 @@
       "done_when": [
         "`go test -run TestExportedAPI -count=1 .` passes",
         "testdata/api/aflib.golden is empty"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 7,
-      "kind": "implement",
       "title": "Add the TestDependencies guard and the package-layout check",
       "criteria": [
-        "01-REQ-1.2",
-        "01-REQ-6"
-      ],
-      "tests": [
-        "TS-01-2",
-        "TS-01-33",
-        "TS-01-34",
-        "TS-01-35",
-        "TS-01-36",
-        "TS-01-37",
-        "TS-01-38",
-        "TS-01-39"
+        "REQ-1.2",
+        "REQ-6"
       ],
       "steps": [
         "Write `deps_test.go` in package `aflib_test`, standard library only (its own imports must be stdlib or this module), sharing the discovery helper from api_test.go where useful",
@@ -294,26 +222,17 @@
       "done_when": [
         "`go test -run 'TestDependencies' -count=1 .` passes",
         "failure messages name the file and the offending directive or import"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 8,
-      "kind": "implement",
       "title": "Write reference docs, README and generated docs",
       "criteria": [
-        "01-REQ-7.4",
-        "01-REQ-8.1",
-        "01-REQ-8.2",
-        "01-REQ-8.3",
-        "01-REQ-8.5"
-      ],
-      "tests": [
-        "TS-01-43",
-        "TS-01-46",
-        "TS-01-47",
-        "TS-01-48",
-        "TS-01-50"
+        "REQ-7.4",
+        "REQ-8.1",
+        "REQ-8.2",
+        "REQ-8.3",
+        "REQ-8.5"
       ],
       "steps": [
         "Read testdata/api/issuex.golden and jobqueue.golden and the copied package comments so every identifier named in the docs exists",
@@ -342,19 +261,13 @@
       "done_when": [
         "docs/generated contains exactly aflib.txt, issuex.txt and jobqueue.txt",
         "every environment variable read by issuex appears in docs/configuration.md"
-      ],
-      "state": "done"
+      ]
     },
     {
       "id": 9,
-      "kind": "implement",
       "title": "Rewrite the AGENTS.md, CLAUDE.md and steering repository sections",
       "criteria": [
-        "01-REQ-9"
-      ],
-      "tests": [
-        "TS-01-51",
-        "TS-01-52"
+        "REQ-9"
       ],
       "steps": [
         "Read AGENTS.md and .specs/steering.md. Note the section headings and keep a copy of both originals (git show HEAD:<file>) for comparison",
@@ -375,43 +288,7 @@
       "done_when": [
         "`cmp AGENTS.md CLAUDE.md` reports no difference",
         "only the Repository Layout and Repository Specifics sections differ from the originals"
-      ],
-      "state": "done"
-    },
-    {
-      "id": 10,
-      "kind": "integration",
-      "title": "Verify the quality gate, golden guard, dependency guard and doc generation end to end",
-      "tests": [
-        "TS-01-53",
-        "TS-01-54",
-        "TS-01-55",
-        "TS-01-56"
-      ],
-      "steps": [
-        "Write and run TS-01-53: fresh clone of the repository alone, run `make check`; confirm fmt, vet, lint (or skip message) and test-short run in order, the GitLab smoke test is skipped, TestExportedAPI and TestDependencies pass, exit 0",
-        "Write and run TS-01-54 in a scratch copy: change an exported signature in jobqueue, `make check` fails naming jobqueue, the first differing line and `make api-golden`; run `make api-golden`; `make check` then exits 0",
-        "Write and run TS-01-55 in a scratch copy: add a replace directive to go.mod, confirm `make check` fails naming go.mod and the directive; revert, add a non-allowlisted import to a non-test issuex file, confirm it fails naming file and import",
-        "Write and run TS-01-56: `make doc`, confirm exactly aflib.txt, issuex.txt, jobqueue.txt and a clean `git status --porcelain docs/generated`",
-        "Trace 01-PATH-1 to 01-PATH-4 through the real Makefile and tests: confirm `check` calls fmt, vet, lint, test-short; test-short runs TestExportedAPI and TestDependencies; `api-golden` passes -update to the test; `doc` uses the same package discovery and names as the golden test; no stub remains",
-        "For every criterion with a contract (e.g. 01-REQ-5.4, 6.1, 6.3), confirm the failure message producer is the code that TestExportedAPI and TestDependencies actually call, not only helper unit tests",
-        "Search every file in all tasks' `touches` (excluding the byte-identical copied packages) for TODO, FIXME, NotImplemented, panic(\"not implemented\") and bare stubs; remove any found in new code",
-        "Confirm `make check` exits 0 on the final tree and the full gate (`make check-release`) is left to the user, noted in the handoff"
-      ],
-      "touches": [
-        "Makefile",
-        "api_test.go",
-        "deps_test.go"
-      ],
-      "depends_on": [
-        8,
-        9
-      ],
-      "done_when": [
-        "`make check` passes in a fresh clone",
-        "all four execution paths are live in the real Makefile and tests"
-      ],
-      "state": "done"
+      ]
     }
   ]
 }

@@ -1,478 +1,878 @@
 {
-  "$schema": "https://agent-fox.dev/schemas/requirements.v2.json",
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
   "spec_id": "01",
   "spec_name": "import_issuex_and_jobqueue",
-  "schema_version": 2,
-  "introduction": "aflib (github.com/agent-fox-dev/aflib) is the single Go module holding packages shared by the agent-fox programs. This spec imports the forge client `issuex` from agent-fox and the durable SQLite job queue `jobqueue` from hub unchanged. It also gives the repository the standard agent-fox shape: the Makefile quality gate, lint configuration, reference docs, an exported-API golden guard and a dependency guard.",
-  "glossary": {
-    "allowlist": "The modules the code may depend on. Non-test code of public packages: the standard library, `github.com/google/uuid`, and this module's packages. Test files and `internal/` files may also use `modernc.org/sqlite`, plus any module ruled in under 01-REQ-4.",
-    "clean checkout": "A fresh clone of this repository alone: no sibling repositories, no `go.work`, no `replace` directive.",
-    "erratum": "The file `docs/errata/01_import_issuex_and_jobqueue.md`. It records the source commits, the meaning of the foreign requirement IDs in the copied tests, and every finding.",
-    "finding": "A case where copied code does not work unchanged in this module. Each one is handled by the fixed rules of 01-REQ-4 and listed in the erratum.",
-    "golden": "The committed file `testdata/api/<name>.golden`. It holds the comment-free, go/format-rendered exported declarations of one public package.",
-    "golden name": "A package's directory relative to the module root, with `/` replaced by `_`. The root package's golden name is `aflib`.",
-    "public package": "A directory of this module that contains non-test Go files for the host build context. It is not `testdata`, does not start with `.` or `_`, is not `docs` or `examples`, and has no `internal` path element.",
-    "source commit": "The fixed commit a package is copied from: agent-fox `84fb9b4` for `issuex/`, hub `ce8e1b8` for `internal/jobqueue/`. Each is resolved to its full hash and read from git objects, never from a working tree."
-  },
+  "schema_version": 3,
   "requirements": [
     {
-      "id": "01-REQ-1",
+      "id": "REQ-1",
       "title": "Module definition",
       "rationale": "Consumers can switch to aflib by changing an import path only if the module builds by itself and pulls in nothing from its former homes.",
       "criteria": [
         {
-          "id": "01-REQ-1.1",
+          "id": "REQ-1.1",
           "pattern": "ubiquitous",
           "system": "go.mod",
-          "action": "declare `module github.com/agent-fox-dev/aflib` and `go 1.27`, and directly require `github.com/google/uuid` and `modernc.org/sqlite` at the versions hub's go.mod requires at its source commit. It contains no `replace` directive. `go.sum` is committed and no `go.work` is committed"
+          "action": "declare `module github.com/agent-fox-dev/aflib` and `go 1.27`, and directly require `github.com/google/uuid` and `modernc.org/sqlite` at the versions hub's go.mod requires at its source commit. It contains no `replace` directive. `go.sum` is committed and no `go.work` is committed",
+          "contract": "the module line is `module github.com/agent-fox-dev/aflib`; the go directive is `go 1.27`; github.com/google/uuid and modernc.org/sqlite are required at exactly the versions in hub's go.mod at ce8e1b8; no `replace` directive exists; go.sum is tracked and go.work is not tracked",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the committed tree",
+              "hub's go.mod at its source commit ce8e1b8 (full hash) is available for comparison"
+            ],
+            "pseudocode": "m = parse(go.mod); assert m.module == 'github.com/agent-fox-dev/aflib'; assert m.go == '1.27'; for mod in [uuid, sqlite]: assert m.require[mod] == hub_go_mod_at(ce8e1b8).require[mod]; assert m.replace == []; assert 'go.sum' in git_ls_files(); assert 'go.work' not in git_ls_files()"
+          }
         },
         {
-          "id": "01-REQ-1.2",
+          "id": "REQ-1.2",
           "pattern": "ubiquitous",
           "system": "module",
-          "action": "contain exactly three non-internal packages: the root package `aflib`, `issuex/` and `jobqueue/`. There is no `cmd/` directory, and no `internal/` package except helpers copied under 01-REQ-4.3"
+          "action": "contain exactly three non-internal packages: the root package `aflib`, `issuex/` and `jobqueue/`. There is no `cmd/` directory, and no `internal/` package except helpers copied under 01-REQ-4.3",
+          "contract": "the non-internal packages are exactly github.com/agent-fox-dev/aflib, .../issuex and .../jobqueue; no cmd/ directory exists; any internal/<helper> directory present is one recorded as copied under 01-REQ-4.3",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed tree"
+            ],
+            "pseudocode": "pkgs = go_list('./...') minus internal; assert set(pkgs) == {aflib, aflib/issuex, aflib/jobqueue}; assert not exists('cmd'); for d in glob('internal/*'): assert d in erratum_helpers"
+          }
         },
         {
-          "id": "01-REQ-1.3",
+          "id": "REQ-1.3",
           "pattern": "ubiquitous",
           "system": "root package aflib",
           "action": "consist of `doc.go` holding only a package doc comment, with no declarations and no imports. The comment names the module, says it holds the packages shared by the agent-fox programs, and gives `issuex` and `jobqueue` one line each",
-          "contract": "the root package's golden is empty"
+          "contract": "the root package's golden is empty",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the committed doc.go and testdata/api/aflib.golden"
+            ],
+            "pseudocode": "f = parse('doc.go', ParseComments); assert f.Name == 'aflib'; assert len(f.Decls) == 0 and len(f.Imports) == 0; assert contains(f.Doc.Text(), ['agent-fox-dev/aflib','issuex','jobqueue']); assert size('testdata/api/aflib.golden') == 0"
+          }
         },
         {
-          "id": "01-REQ-1.4",
+          "id": "REQ-1.4",
           "pattern": "event_driven",
           "condition": "`go build ./...` and `go test -short ./...` run in a clean checkout",
           "system": "module",
           "action": "build and pass every test, with no network access beyond fetching the required modules and their requirements through the Go module proxy",
-          "contract": "both commands exit 0"
+          "contract": "both commands exit 0",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a fresh `git clone` of the repository into a temp dir",
+              "no go.work and no sibling repositories",
+              "only the Go module proxy reachable for network"
+            ],
+            "pseudocode": "clone(tmp); assert run('go build ./...', cwd=tmp).code == 0; assert run('go test -short ./...', cwd=tmp).code == 0"
+          }
         },
         {
-          "id": "01-REQ-1.5",
+          "id": "REQ-1.5",
           "pattern": "event_driven",
           "condition": "`go list -m all` runs in the module",
           "system": "module",
           "action": "list only `github.com/agent-fox-dev/aflib`, `github.com/google/uuid`, `modernc.org/sqlite` and their transitive requirements",
-          "contract": "no listed module path starts with `github.com/agent-fox-dev/hub`, `github.com/agent-fox-dev/agent-fox` or the AgentKit module path"
+          "contract": "no listed module path starts with `github.com/agent-fox-dev/hub`, `github.com/agent-fox-dev/agent-fox` or the AgentKit module path",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed tree"
+            ],
+            "pseudocode": "mods = lines(run('go list -m all')); assert mods[0].startswith('github.com/agent-fox-dev/aflib'); for m in mods: assert not m.startswith(['github.com/agent-fox-dev/hub','github.com/agent-fox-dev/agent-fox', agentkit_path])"
+          }
         },
         {
-          "id": "01-REQ-1.6",
+          "id": "REQ-1.6",
           "pattern": "unwanted",
           "condition": "no forge token, forge URL variable or GitLab smoke-test variable is set in the environment and no sibling repository is present",
           "system": "module",
           "action": "still pass `go test -short ./...`, skipping only the tests the source repositories already skip in that environment",
-          "contract": "exit 0; the GitLab smoke test is reported as skipped"
+          "contract": "exit 0; the GitLab smoke test is reported as skipped",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a clean checkout",
+              "GITHUB_TOKEN, GITLAB_TOKEN, GITHUB_API_URL, GITLAB_API_URL and the GitLab smoke-test gating variable (named in the copied issuex test) are unset in the environment"
+            ],
+            "pseudocode": "env = clean_env(unset=[...]); r = run('go test -short -v ./...', env); assert r.code == 0; assert re.search('--- SKIP: .*GitLab.*Smoke', r.out); assert 'FAIL' not in r.out"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-2",
+      "id": "REQ-2",
       "title": "Importing issuex",
       "rationale": "A byte-identical copy from a fixed commit makes the move reviewable and lets agent-fox and hub switch by changing an import path only.",
       "criteria": [
         {
-          "id": "01-REQ-2.1",
+          "id": "REQ-2.1",
           "pattern": "ubiquitous",
           "system": "issuex import",
-          "action": "place every file of `issuex/` from https://github.com/agent-fox-dev/agent-fox at the full hash of commit `84fb9b4` at the same relative path under `issuex/`, including `testdata/` and non-Go files. The files are extracted from git objects at that commit, for example with `git archive`"
+          "action": "place every file of `issuex/` from https://github.com/agent-fox-dev/agent-fox at the full hash of commit `84fb9b4` at the same relative path under `issuex/`, including `testdata/` and non-Go files. The files are extracted from git objects at that commit, for example with `git archive`",
+          "contract": "the sets of relative paths are equal, including testdata/ and non-Go files; every non-test .go file has zero byte differences, except files recorded in the erratum as 01-REQ-4.6 edits",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a bare clone of https://github.com/agent-fox-dev/agent-fox",
+              "84fb9b4 resolved to its full hash"
+            ],
+            "pseudocode": "src = ls_tree(fullhash,'issuex'); dst = walk('issuex'); assert src.paths == dst.paths; for f in dst.nontest_go: if f not in erratum_edits: assert bytes(f) == git_show(fullhash, f)"
+          }
         },
         {
-          "id": "01-REQ-2.2",
+          "id": "REQ-2.2",
           "pattern": "ubiquitous",
           "system": "issuex import",
           "action": "keep every non-test `.go` file under `issuex/` byte-identical to its source file, except edits listed in the erratum under 01-REQ-4.6",
-          "contract": "comparing each non-test file with `git show <fullhash>:issuex/<file>` finds no difference outside the listed findings"
+          "contract": "comparing each non-test file with `git show <fullhash>:issuex/<file>` finds no difference outside the listed findings",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
         },
         {
-          "id": "01-REQ-2.3",
+          "id": "REQ-2.3",
           "pattern": "ubiquitous",
           "system": "issuex import",
           "action": "limit the edits to `_test.go` files to rewriting import paths `github.com/agent-fox-dev/agent-fox/issuex` (and its sub-paths) to `github.com/agent-fox-dev/aflib/issuex`. The package names `issuex` and `issuex_test` stay unchanged",
-          "contract": "a line diff of each test file against its source shows only import-path lines"
+          "contract": "a line diff of each test file against its source shows only import-path lines",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the source files at the full hash of 84fb9b4",
+              "the package names issuex and issuex_test in the source"
+            ],
+            "pseudocode": "for f in test_files('issuex'): for (a,b) in diff_lines(git_show(fullhash,f), read(f)): assert a.replace('agent-fox/issuex','aflib/issuex') == b and is_import_line(a); assert package_clause(f) == package_clause_src(f)"
+          }
         },
         {
-          "id": "01-REQ-2.4",
+          "id": "REQ-2.4",
           "pattern": "ubiquitous",
           "system": "issuex import",
-          "action": "arrive in its own commit that contains only the package's files, the test import edits and the go.mod/go.sum changes they need. The commit message names the source repository and the full commit hash"
+          "action": "arrive in its own commit that contains only the package's files, the test import edits and the go.mod/go.sum changes they need. The commit message names the source repository and the full commit hash",
+          "contract": "the message contains https://github.com/agent-fox-dev/agent-fox and the full 40-character hash of 84fb9b4; the changed paths are only under issuex/, go.mod and go.sum",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the git history of this repository"
+            ],
+            "pseudocode": "c = commit_adding('issuex/'); assert 'agent-fox-dev/agent-fox' in msg(c) and fullhash in msg(c); for p in paths(c): assert p.startswith('issuex/') or p in ['go.mod','go.sum']"
+          }
         },
         {
-          "id": "01-REQ-2.5",
+          "id": "REQ-2.5",
           "pattern": "unwanted",
           "condition": "the agent-fox source commit cannot be fetched",
           "system": "implementer",
           "action": "stop the import without reconstructing the package from memory, documentation or a different commit",
-          "contract": "no `issuex/` files are committed; the handoff reports the unreachable commit"
+          "contract": "no `issuex/` files are committed; the handoff reports the unreachable commit",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a source remote URL that cannot be fetched, or a commit hash absent from the remote",
+              "a scratch copy of this repository"
+            ],
+            "pseudocode": "r = run(import_issuex, source='file:///nonexistent'); assert r.code != 0; assert not exists(scratch+'/issuex'); assert git_log_paths(scratch,'issuex') == []"
+          }
         },
         {
-          "id": "01-REQ-2.6",
+          "id": "REQ-2.6",
           "pattern": "event_driven",
           "condition": "`go test -short ./issuex/...` runs in a clean checkout",
           "system": "issuex",
           "action": "pass every copied test. This covers environment-driven forge detection, the `git remote get-url` fallback, the `gh` probe, and the precedence of explicit `Options` over the environment. The GitLab smoke test is skipped unless its environment variable is set, as in the source",
-          "contract": "exit 0"
+          "contract": "exit 0",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a clean checkout",
+              "no forge environment variables set"
+            ],
+            "pseudocode": "r = run('go test -short -count=1 -v ./issuex/...'); assert r.code == 0; assert 'FAIL' not in r.out; assert smoke_test_status(r.out) == 'SKIP'"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-3",
+      "id": "REQ-3",
       "title": "Importing jobqueue",
       "rationale": "The agent-fox service and hub both need the same durable job queue, and hub's `internal/` copy cannot be imported from outside hub.",
       "criteria": [
         {
-          "id": "01-REQ-3.1",
+          "id": "REQ-3.1",
           "pattern": "ubiquitous",
           "system": "jobqueue import",
-          "action": "place every file of `internal/jobqueue/` from https://github.com/agent-fox-dev/hub at the full hash of commit `ce8e1b8` at the same relative path under `jobqueue/`. The files are extracted from git objects at that commit"
+          "action": "place every file of `internal/jobqueue/` from https://github.com/agent-fox-dev/hub at the full hash of commit `ce8e1b8` at the same relative path under `jobqueue/`. The files are extracted from git objects at that commit",
+          "contract": "the sets of relative paths are equal; every non-test .go file has zero byte differences, except files recorded in the erratum as 01-REQ-4.6 edits",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a bare clone of https://github.com/agent-fox-dev/hub",
+              "ce8e1b8 resolved to its full hash"
+            ],
+            "pseudocode": "src = ls_tree(fullhash,'internal/jobqueue'); dst = walk('jobqueue'); assert src.paths == dst.paths; for f in dst.nontest_go: if f not in erratum_edits: assert bytes(f) == git_show(fullhash, 'internal/jobqueue/'+f)"
+          }
         },
         {
-          "id": "01-REQ-3.2",
+          "id": "REQ-3.2",
           "pattern": "ubiquitous",
           "system": "jobqueue import",
           "action": "keep every non-test `.go` file under `jobqueue/` byte-identical to its source file, except edits listed in the erratum under 01-REQ-4.6",
-          "contract": "comparing each non-test file with `git show <fullhash>:internal/jobqueue/<file>` finds no difference outside the listed findings"
+          "contract": "comparing each non-test file with `git show <fullhash>:internal/jobqueue/<file>` finds no difference outside the listed findings",
+          "check": {
+            "same_as": "REQ-3.1"
+          }
         },
         {
-          "id": "01-REQ-3.3",
+          "id": "REQ-3.3",
           "pattern": "ubiquitous",
           "system": "jobqueue import",
           "action": "limit the edits to `_test.go` files to rewriting `github.com/agent-fox-dev/hub/internal/jobqueue` to `github.com/agent-fox-dev/aflib/jobqueue`",
-          "contract": "a line diff of each test file against its source shows only import-path lines"
+          "contract": "a line diff of each test file against its source shows only import-path lines",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the source files at the full hash of ce8e1b8"
+            ],
+            "pseudocode": "for f in test_files('jobqueue'): for (a,b) in diff_lines(git_show(fullhash,'internal/jobqueue/'+f), read(f)): assert a.replace('hub/internal/jobqueue','aflib/jobqueue') == b and is_import_line(a)"
+          }
         },
         {
-          "id": "01-REQ-3.4",
+          "id": "REQ-3.4",
           "pattern": "ubiquitous",
           "system": "jobqueue import",
-          "action": "arrive in its own commit that contains only the package's files, the test import edits and the go.mod/go.sum changes they need. The commit message names the source repository and the full commit hash"
+          "action": "arrive in its own commit that contains only the package's files, the test import edits and the go.mod/go.sum changes they need. The commit message names the source repository and the full commit hash",
+          "contract": "the message contains https://github.com/agent-fox-dev/hub and the full 40-character hash of ce8e1b8; the changed paths are only under jobqueue/, go.mod and go.sum",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the git history of this repository"
+            ],
+            "pseudocode": "c = commit_adding('jobqueue/'); assert 'agent-fox-dev/hub' in msg(c) and fullhash in msg(c); for p in paths(c): assert p.startswith('jobqueue/') or p in ['go.mod','go.sum']"
+          }
         },
         {
-          "id": "01-REQ-3.5",
+          "id": "REQ-3.5",
           "pattern": "unwanted",
           "condition": "the hub source commit cannot be fetched",
           "system": "implementer",
           "action": "stop the import without reconstructing the package from memory, documentation or a different commit",
-          "contract": "no `jobqueue/` files are committed; the handoff reports the unreachable commit"
+          "contract": "no `jobqueue/` files are committed; the handoff reports the unreachable commit",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a source remote URL that cannot be fetched, or a commit hash absent from the remote",
+              "a scratch copy of this repository"
+            ],
+            "pseudocode": "r = run(import_jobqueue, source='file:///nonexistent'); assert r.code != 0; assert not exists(scratch+'/jobqueue'); assert git_log_paths(scratch,'jobqueue') == []"
+          }
         },
         {
-          "id": "01-REQ-3.6",
+          "id": "REQ-3.6",
           "pattern": "ubiquitous",
           "system": "jobqueue",
-          "action": "import `modernc.org/sqlite` only from `_test.go` files, and import only the standard library and `github.com/google/uuid` from non-test files"
+          "action": "import `modernc.org/sqlite` only from `_test.go` files, and import only the standard library and `github.com/google/uuid` from non-test files",
+          "contract": "no non-test file imports modernc.org/sqlite; every non-test import is standard library or github.com/google/uuid; at least one _test.go file imports modernc.org/sqlite",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the committed jobqueue/ directory"
+            ],
+            "pseudocode": "for f in nontest(jobqueue): for i in imports(f): assert is_stdlib(i) or i == 'github.com/google/uuid'; assert 'modernc.org/sqlite' not in imports(f); assert any('modernc.org/sqlite' in imports(t) for t in tests(jobqueue))"
+          }
         },
         {
-          "id": "01-REQ-3.7",
+          "id": "REQ-3.7",
           "pattern": "event_driven",
           "condition": "`go test -short ./jobqueue/...` runs in a clean checkout",
           "system": "jobqueue",
           "action": "pass every copied test against SQLite opened through `modernc.org/sqlite`",
-          "contract": "exit 0"
+          "contract": "exit 0",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a clean checkout"
+            ],
+            "pseudocode": "r = run('go test -short -count=1 ./jobqueue/...'); assert r.code == 0"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-4",
+      "id": "REQ-4",
       "title": "Handling findings during the import",
       "rationale": "An unattended run needs a deterministic answer for code that does not work unchanged in its new home, and must never trade a test away for a passing build.",
+      "system": "implementer",
       "criteria": [
         {
-          "id": "01-REQ-4.1",
+          "id": "REQ-4.1",
           "pattern": "ubiquitous",
-          "system": "implementer",
           "action": "keep every copied test: none is deleted, skipped, gated with `t.Skip`, or weakened to make the build pass",
-          "contract": "the set of `Test*`, `Fuzz*` and `Example*` function names in each package equals the set at the source commit"
+          "contract": "the set of `Test*`, `Fuzz*` and `Example*` function names in each package equals the set at the source commit",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the source packages at 84fb9b4 and ce8e1b8"
+            ],
+            "pseudocode": "for (pkg, src) in [('issuex', ...), ('jobqueue', ...)]: assert names(read_tree(pkg)) == names(git_tree(src))"
+          }
         },
         {
-          "id": "01-REQ-4.2",
+          "id": "REQ-4.2",
           "pattern": "unwanted",
           "condition": "a copied non-test file imports another package of its source module",
-          "system": "implementer",
           "action": "stop without copying that package and without editing the file",
-          "contract": "the finding is recorded in the erratum and reported in the handoff as blocking"
+          "contract": "the finding is recorded in the erratum and reported in the handoff as blocking",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the committed issuex/ and jobqueue/ non-test files",
+              "a fixture non-test file importing github.com/agent-fox-dev/hub/internal/foo"
+            ],
+            "pseudocode": "assert scan(fixture).violations == [('x.go','github.com/agent-fox-dev/hub/internal/foo')]; assert scan('issuex','jobqueue').violations == []"
+          }
         },
         {
-          "id": "01-REQ-4.3",
+          "id": "REQ-4.3",
           "pattern": "unwanted",
           "condition": "a copied test file imports a test helper package of its source module",
-          "system": "implementer",
           "action": "copy the helper files the tests need into `internal/<helper>/` of this module, so the test files' edits stay import-path-only, and record the copy in `docs/architecture.md`",
-          "contract": "the test file diff shows only import-path lines; the helper appears in the erratum"
+          "contract": "the test file diff shows only import-path lines; the helper appears in the erratum",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed test files of issuex and jobqueue"
+            ],
+            "pseudocode": "for t in test_files: assert not any(i.startswith(SRC_MODULES) for i in imports(t)); for d in glob('internal/*'): assert d in architecture_md and d in erratum"
+          }
         },
         {
-          "id": "01-REQ-4.4",
+          "id": "REQ-4.4",
           "pattern": "unwanted",
           "condition": "a copied test needs a module outside the allowlist",
-          "system": "implementer",
           "action": "add that module as a test-only dependency, record a ruling naming it in `docs/architecture.md`, and add it to the test allowlist of 01-REQ-6",
-          "contract": "the module appears in go.mod and in the erratum, and only `_test.go` or `internal/` files import it"
+          "contract": "the module appears in go.mod and in the erratum, and only `_test.go` or `internal/` files import it",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "go.mod and the committed tree"
+            ],
+            "pseudocode": "extra = direct_requires(go.mod) - {uuid, sqlite}; for m in extra: assert m in erratum and m in architecture_md; for f in importers(m): assert f.endswith('_test.go') or in_internal(f)"
+          }
         },
         {
-          "id": "01-REQ-4.5",
+          "id": "REQ-4.5",
           "pattern": "unwanted",
           "condition": "`golangci-lint` reports a finding in copied code",
-          "system": "implementer",
           "action": "add a path-scoped exclusion to `.golangci.yml`, with a comment pointing at the erratum, and leave the copied code unedited",
-          "contract": "`golangci-lint run` exits 0; the exclusion is listed in the erratum"
+          "contract": "`golangci-lint run` exits 0; the exclusion is listed in the erratum",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "golangci-lint installed",
+              "copied code unedited"
+            ],
+            "pseudocode": "assert run('golangci-lint run').code == 0; for ex in exclusions('.golangci.yml'): assert ex.path is not None and 'errata/01_import_issuex_and_jobqueue.md' in ex.comment and ex in erratum"
+          }
         },
         {
-          "id": "01-REQ-4.6",
+          "id": "REQ-4.6",
           "pattern": "unwanted",
           "condition": "`gofmt` or `go vet` rejects copied code",
-          "system": "implementer",
           "action": "make the smallest edit that passes, without changing any exported declaration",
-          "contract": "the edit is listed in the erratum with file and reason; the package's golden still equals its source exported declarations"
+          "contract": "the edit is listed in the erratum with file and reason; the package's golden still equals its source exported declarations",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed tree",
+              "the source exported declarations at each source commit"
+            ],
+            "pseudocode": "diffs = [f for f in nontest if bytes(f) != git_show(f)]; for f in diffs: assert f in erratum; assert render('issuex') == render_source(fullhash_af); assert render('jobqueue') == render_source(fullhash_hub)"
+          }
         },
         {
-          "id": "01-REQ-4.7",
+          "id": "REQ-4.7",
           "pattern": "unwanted",
           "condition": "a copied test fails in the new location for an environmental reason, such as missing testdata",
-          "system": "implementer",
           "action": "fix the cause outside the test file. Where no such fix exists, stop",
-          "contract": "the fix, or the blocking failure, is recorded in the erratum and the handoff"
+          "contract": "the fix, or the blocking failure, is recorded in the erratum and the handoff",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a clean checkout",
+              "the copied testdata and non-Go files"
+            ],
+            "pseudocode": "assert run('go test -short -count=1 ./...').code == 0; assert diff_nonimport_lines(test_files) == []; assert erratum_lists(env_fixes)"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-5",
+      "id": "REQ-5",
       "title": "Exported-API golden",
       "rationale": "A change to any exported declaration, or a new public package, must fail the quality gate until a person accepts it on purpose.",
       "criteria": [
         {
-          "id": "01-REQ-5.1",
+          "id": "REQ-5.1",
           "pattern": "event_driven",
           "condition": "`TestExportedAPI` in package `aflib_test` at the module root runs",
           "system": "API golden test",
           "action": "discover every public package under the module root. A directory counts when it holds non-test Go files for the host build context (selected with `go/build`). It is skipped when it is `testdata`, starts with `.` or `_`, is `docs` or `examples`, or has an `internal` path element",
-          "contract": "on the committed tree the discovered set is exactly {aflib, issuex, jobqueue}"
+          "contract": "on the committed tree the discovered set is exactly {aflib, issuex, jobqueue}",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a fixture module tree under testdata with public packages `a` and `b/c`, plus directories testdata/, .hidden/, _tmp/, docs/, examples/, internal/x/ and a directory with only _test.go files, each holding Go files"
+            ],
+            "pseudocode": "assert set(discover(fixture)) == {'a','b/c'}; assert set(discover('.')) == {'aflib','issuex','jobqueue'}"
+          }
         },
         {
-          "id": "01-REQ-5.2",
+          "id": "REQ-5.2",
           "pattern": "ubiquitous",
           "system": "API golden test",
-          "action": "render each public package's exported declarations using only `go/build`, `go/parser`, `go/doc` and `go/format`, without executing `go doc`. The order is constants, variables, functions, then types, each type followed by its constants, variables, functions and methods in `go/doc` order. Each declaration is formatted by `go/format`, followed by a blank line, with doc, field and line comments removed, and with no package clause or import path"
+          "action": "render each public package's exported declarations using only `go/build`, `go/parser`, `go/doc` and `go/format`, without executing `go doc`. The order is constants, variables, functions, then types, each type followed by its constants, variables, functions and methods in `go/doc` order. Each declaration is formatted by `go/format`, followed by a blank line, with doc, field and line comments removed, and with no package clause or import path",
+          "contract": "output order is consts, vars, funcs, then types each followed by its consts, vars, funcs and methods in go/doc order; unexported identifiers are absent; no `//` or `/*` comment text, no `package` clause and no import path appears; each declaration is go/format output followed by a blank line; go doc is not executed",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a fixture package with exported and unexported consts, vars, funcs, a type with an associated const, var, constructor and methods, doc comments, field comments and line comments"
+            ],
+            "pseudocode": "out = render(fixture); assert out == read('testdata/fixtures/render/expected.golden'); assert '//' not in out and 'package ' not in out"
+          }
         },
         {
-          "id": "01-REQ-5.3",
+          "id": "REQ-5.3",
           "pattern": "ubiquitous",
           "system": "API golden test",
           "action": "compare each package's rendering with `testdata/api/<golden name>.golden`. A package with no exported declarations has an empty golden",
-          "contract": "`testdata/api/aflib.golden` is empty; `issuex.golden` and `jobqueue.golden` equal the source packages' exported declarations at their source commits"
+          "contract": "`testdata/api/aflib.golden` is empty; `issuex.golden` and `jobqueue.golden` equal the source packages' exported declarations at their source commits",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed tree with testdata/api/{aflib,issuex,jobqueue}.golden",
+              "source renderings at the source commits"
+            ],
+            "pseudocode": "assert render('.') == '' == read(aflib.golden); assert read(issuex.golden) == render_source(af_hash,'issuex'); assert read(jobqueue.golden) == render_source(hub_hash,'internal/jobqueue')"
+          }
         },
         {
-          "id": "01-REQ-5.4",
+          "id": "REQ-5.4",
           "pattern": "unwanted",
           "condition": "a package's rendering differs from its golden",
           "system": "API golden test",
           "action": "fail the test",
-          "contract": "the failure message names the package, the first differing line, and the command that regenerates the goldens (`make api-golden`)"
+          "contract": "the failure message names the package, the first differing line, and the command that regenerates the goldens (`make api-golden`)",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a fixture package whose golden has one changed line"
+            ],
+            "pseudocode": "msg = compare(fixture_pkg, golden_with_diff); assert fixture_pkg.name in msg and first_diff_line in msg and 'make api-golden' in msg"
+          }
         },
         {
-          "id": "01-REQ-5.5",
+          "id": "REQ-5.5",
           "pattern": "unwanted",
           "condition": "a discovered public package has no golden file",
           "system": "API golden test",
           "action": "fail the test",
-          "contract": "the failure message names the package"
+          "contract": "the failure message names the package",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a fixture module with public package `newpkg` and no testdata/api/newpkg.golden"
+            ],
+            "pseudocode": "errs = check(fixture); assert any('newpkg' in e for e in errs)"
+          }
         },
         {
-          "id": "01-REQ-5.6",
+          "id": "REQ-5.6",
           "pattern": "unwanted",
           "condition": "a golden file in `testdata/api/` matches no discovered package",
           "system": "API golden test",
           "action": "fail the test",
-          "contract": "the failure message names the golden file"
+          "contract": "the failure message names the golden file",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a fixture module with testdata/api/ghost.golden and no package `ghost`"
+            ],
+            "pseudocode": "errs = check(fixture); assert any('ghost.golden' in e for e in errs)"
+          }
         },
         {
-          "id": "01-REQ-5.7",
+          "id": "REQ-5.7",
           "pattern": "event_driven",
           "condition": "the test runs with `-update`, or `make api-golden` runs",
           "system": "API golden test",
           "action": "rewrite the golden of every discovered public package with its current rendering",
-          "contract": "a following run without `-update` passes"
+          "contract": "a following run without `-update` passes",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a scratch copy of the module whose goldens are stale, one missing and one orphaned"
+            ],
+            "pseudocode": "run('go test -run TestExportedAPI . -update', scratch); assert run('go test -run TestExportedAPI .', scratch).code == 0; for p in discover(scratch): assert read(golden(p)) == render(p)"
+          }
         },
         {
-          "id": "01-REQ-5.8",
+          "id": "REQ-5.8",
           "pattern": "ubiquitous",
           "system": "API golden renderer",
-          "action": "for any package source, give byte-identical output across repeated renders and across edits that change only comments or unexported identifiers"
+          "action": "for any package source, give byte-identical output across repeated renders and across edits that change only comments or unexported identifiers",
+          "contract": "the two renders of the same source are byte-identical; the render of the variant is byte-identical to the render of the original",
+          "check": {
+            "kind": "property",
+            "setup": [
+              "a generator of small package sources with exported and unexported declarations and arbitrary comments"
+            ],
+            "pseudocode": "for src in gen_pkgs(): a = render(src); assert a == render(src); assert a == render(mutate_comments_and_unexported(src))"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-6",
+      "id": "REQ-6",
       "title": "Dependency guard",
       "rationale": "The allowlist rule and the no-replace rule need a check inside `make check` to be enforceable.",
+      "system": "TestDependencies",
       "criteria": [
         {
-          "id": "01-REQ-6.1",
+          "id": "REQ-6.1",
           "pattern": "unwanted",
           "condition": "go.mod contains a `replace` directive, in single-line or block form",
-          "system": "TestDependencies",
           "action": "fail the test",
-          "contract": "the failure message names `go.mod` and the replace directive"
+          "contract": "the failure message names `go.mod` and the replace directive",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "fixture go.mod files, one with `replace example.com/x => ../x` and one with a `replace ( ... )` block"
+            ],
+            "pseudocode": "for f in [single, block]: errs = check_gomod(f); assert any('go.mod' in e and 'replace' in e for e in errs)"
+          }
         },
         {
-          "id": "01-REQ-6.2",
+          "id": "REQ-6.2",
           "pattern": "unwanted",
           "condition": "go.mod directly requires, without a `// indirect` comment, a module outside {`github.com/google/uuid`, `modernc.org/sqlite`} plus modules added under 01-REQ-4.4",
-          "system": "TestDependencies",
           "action": "fail the test",
-          "contract": "the failure message names `go.mod` and the offending module path"
+          "contract": "the failure message names `go.mod` and the offending module path",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "fixture go.mod files: one directly requiring example.com/bad (single-line and in a block), one listing it with `// indirect`, one requiring only uuid and modernc.org/sqlite"
+            ],
+            "pseudocode": "assert 'example.com/bad' in check_gomod(direct_block)[0]; assert check_gomod(indirect) == []; assert check_gomod(allowed) == []"
+          }
         },
         {
-          "id": "01-REQ-6.3",
+          "id": "REQ-6.3",
           "pattern": "unwanted",
           "condition": "a non-test file of a public package imports a path that is not standard library, `github.com/google/uuid`, or a package of this module",
-          "system": "TestDependencies",
           "action": "fail the test",
-          "contract": "the failure message names the file and the offending import path"
+          "contract": "the failure message names the file and the offending import path",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a fixture public package whose non-test file imports example.com/bad/lib",
+              "a fixture non-test file importing only stdlib, github.com/google/uuid and a package of this module"
+            ],
+            "pseudocode": "errs = check_imports(fixture_bad); assert 'x.go' in errs[0] and 'example.com/bad/lib' in errs[0]; assert check_imports(fixture_ok) == []"
+          }
         },
         {
-          "id": "01-REQ-6.4",
+          "id": "REQ-6.4",
           "pattern": "unwanted",
           "condition": "a test file, or any file of an `internal/` package, imports a path that is not standard library, a package of this module, or the test allowlist {`github.com/google/uuid`, `modernc.org/sqlite`} plus modules added under 01-REQ-4.4",
-          "system": "TestDependencies",
           "action": "fail the test",
-          "contract": "the failure message names the file and the offending import path"
+          "contract": "the failure message names the file and the offending import path",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "fixture test files importing modernc.org/sqlite and example.com/bad/lib",
+              "a fixture internal/ file importing example.com/bad/lib",
+              "an extra module ruled in under 01-REQ-4.4 added to the test allowlist"
+            ],
+            "pseudocode": "assert check_test_imports(t_sqlite) == []; assert 'example.com/bad/lib' in check_test_imports(t_bad)[0]; assert 'example.com/bad/lib' in check_test_imports(internal_bad)[0]"
+          }
         },
         {
-          "id": "01-REQ-6.5",
+          "id": "REQ-6.5",
           "pattern": "ubiquitous",
-          "system": "TestDependencies",
-          "action": "for any import path, classify it as standard library exactly when the first `/`-separated element of the path contains no dot"
+          "action": "for any import path, classify it as standard library exactly when the first `/`-separated element of the path contains no dot",
+          "contract": "it returns true exactly when the first element contains no `.`",
+          "check": {
+            "kind": "property",
+            "setup": [
+              "a generator of import paths of one to four `/`-separated elements over letters, digits, dots and dashes"
+            ],
+            "pseudocode": "for p in gen_paths(): assert is_stdlib(p) == ('.' not in p.split('/')[0])"
+          }
         },
         {
-          "id": "01-REQ-6.6",
+          "id": "REQ-6.6",
           "pattern": "ubiquitous",
-          "system": "TestDependencies",
-          "action": "parse go.mod `require` blocks, single-line `require` directives, `// indirect` comments and `replace` directives with standard-library code only. It makes no network access and imports no third-party module"
+          "action": "parse go.mod `require` blocks, single-line `require` directives, `// indirect` comments and `replace` directives with standard-library code only. It makes no network access and imports no third-party module",
+          "contract": "the parsed requires, their indirect flags and the replaces match the fixture expectations; every import of the root guard test files is standard library or this module; no network access is used",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "fixture go.mod covering a require block, a single-line require, `// indirect` lines, a single-line replace and a replace block",
+              "the import list of the guard test files"
+            ],
+            "pseudocode": "m = parse(fixture); assert m.requires == expected and m.indirect == expected_ind and m.replaces == expected_rep; for f in root_test_files: for i in imports(f): assert is_stdlib(i) or i.startswith('github.com/agent-fox-dev/aflib')"
+          }
         },
         {
-          "id": "01-REQ-6.7",
+          "id": "REQ-6.7",
           "pattern": "event_driven",
           "condition": "`TestDependencies` runs against the committed tree",
-          "system": "TestDependencies",
           "action": "pass",
-          "contract": "test result PASS with no reported violations"
+          "contract": "test result PASS with no reported violations",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed tree"
+            ],
+            "pseudocode": "r = run('go test -run TestDependencies -count=1 -v .'); assert r.code == 0 and 'PASS' in r.out"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-7",
+      "id": "REQ-7",
       "title": "Makefile and lint configuration",
       "rationale": "Every agent-fox repository runs the same quality gate, and `make check` is the only gate agents run.",
       "criteria": [
         {
-          "id": "01-REQ-7.1",
+          "id": "REQ-7.1",
           "pattern": "ubiquitous",
           "system": "Makefile",
-          "action": "provide these targets. `help`. `build` (`go build ./...`). `test` (`go test ./... -count=1`). `test-short` (`go test -short ./...`). `coverage`. `fmt` (gofmt in place over all tracked Go files). `vet` (`go vet ./...`). `lint`. `check`. `check-release` (fmt, vet, lint, test). `doc`. `tidy` (`go mod tidy`). `clean`. `api-golden`. There is no nested-module loop"
+          "action": "provide these targets. `help`. `build` (`go build ./...`). `test` (`go test ./... -count=1`). `test-short` (`go test -short ./...`). `coverage`. `fmt` (gofmt in place over all tracked Go files). `vet` (`go vet ./...`). `lint`. `check`. `check-release` (fmt, vet, lint, test). `doc`. `tidy` (`go mod tidy`). `clean`. `api-golden`. There is no nested-module loop",
+          "contract": "each target exits 0 in dry-run; build, test, test-short, vet and tidy expand to `go build ./...`, `go test ./... -count=1`, `go test -short ./...`, `go vet ./...` and `go mod tidy`; check-release expands to fmt, vet, lint, test; no target loops over a MODULES variable",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed Makefile",
+              "a one-off handoff check, since steering forbids committed tests of Makefile content; behaviour is exercised by running make"
+            ],
+            "pseudocode": "for t in TARGETS: assert run('make -n '+t).code == 0; assert 'go test -short ./...' in run('make -n test-short').out"
+          }
         },
         {
-          "id": "01-REQ-7.2",
+          "id": "REQ-7.2",
           "pattern": "event_driven",
           "condition": "`make check` runs",
           "system": "Makefile",
           "action": "run `fmt`, `vet`, `lint` and `test-short` in that order, stopping at the first failing step",
-          "contract": "exit 0 when all four steps pass; a non-zero exit, with no later step run, when one fails"
+          "contract": "exit 0 when all four steps pass; a non-zero exit, with no later step run, when one fails",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a scratch copy of the repository",
+              "a case where all steps pass, and a case with a go vet failure injected in the scratch tree"
+            ],
+            "pseudocode": "r = run('make check', ok); assert r.code == 0 and order(r.out) == ['fmt','vet','lint','test-short']; r2 = run('make check', vet_broken); assert r2.code != 0 and 'go test -short' not in r2.out"
+          }
         },
         {
-          "id": "01-REQ-7.3",
+          "id": "REQ-7.3",
           "pattern": "unwanted",
           "condition": "`golangci-lint` is not on PATH when `make lint` runs",
           "system": "Makefile",
           "action": "print a message that linting was skipped and succeed",
-          "contract": "exit 0 with a skip message on stdout"
+          "contract": "exit 0 with a skip message on stdout",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a PATH that contains make and go but not golangci-lint"
+            ],
+            "pseudocode": "r = run('make lint', env=PATH_without_golangci); assert r.code == 0 and 'skip' in r.stdout.lower()"
+          }
         },
         {
-          "id": "01-REQ-7.4",
+          "id": "REQ-7.4",
           "pattern": "event_driven",
           "condition": "`make doc` runs",
           "system": "Makefile",
           "action": "write `go doc -all <importpath>` for each public package to `docs/generated/<golden name>.txt`",
-          "contract": "on the committed tree it produces exactly `aflib.txt`, `issuex.txt` and `jobqueue.txt`, and `git status --porcelain docs/generated` is empty afterwards"
+          "contract": "on the committed tree it produces exactly `aflib.txt`, `issuex.txt` and `jobqueue.txt`, and `git status --porcelain docs/generated` is empty afterwards",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the committed tree with docs/generated/ committed"
+            ],
+            "pseudocode": "run('make doc'); assert sorted(ls('docs/generated')) == ['aflib.txt','issuex.txt','jobqueue.txt']; assert run('git status --porcelain docs/generated').out == ''"
+          }
         },
         {
-          "id": "01-REQ-7.5",
+          "id": "REQ-7.5",
           "pattern": "ubiquitous",
           "system": ".golangci.yml",
-          "action": "equal hub's `.golangci.yml` at its source commit, minus every rule that names a hub path, plus only the path-scoped `issuex` exclusions added under 01-REQ-4.5, each with a comment pointing at the erratum"
+          "action": "equal hub's `.golangci.yml` at its source commit, minus every rule that names a hub path, plus only the path-scoped `issuex` exclusions added under 01-REQ-4.5, each with a comment pointing at the erratum",
+          "contract": "every removed rule names a hub path; every added rule is a path-scoped issuex exclusion preceded by a comment pointing at the erratum; no other difference exists",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "hub's .golangci.yml at the full hash of ce8e1b8"
+            ],
+            "pseudocode": "d = diff(hub_cfg, local_cfg); for r in d.removed: assert names_hub_path(r); for r in d.added: assert 'issuex' in r.path and 'errata' in r.comment; assert d.other == []"
+          }
         },
         {
-          "id": "01-REQ-7.6",
+          "id": "REQ-7.6",
           "pattern": "event_driven",
           "condition": "`golangci-lint run` runs over a clean checkout with `.golangci.yml`",
           "system": "golangci-lint",
           "action": "report no findings",
-          "contract": "exit 0"
+          "contract": "exit 0",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "golangci-lint installed",
+              "a clean checkout with .golangci.yml"
+            ],
+            "pseudocode": "assert run('golangci-lint run').code == 0"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-8",
+      "id": "REQ-8",
       "title": "Reference docs and erratum",
       "rationale": "Agents and consumers find their way through the reference docs, and the erratum explains everything that differs from a plain copy.",
       "criteria": [
         {
-          "id": "01-REQ-8.1",
+          "id": "REQ-8.1",
           "pattern": "ubiquitous",
           "system": "docs/api.md",
-          "action": "state that the repository has no REST API, map the public packages `aflib`, `issuex` and `jobqueue` with each one's purpose and principal exported identifiers taken from the copied code, and point to `docs/generated/`"
+          "action": "state that the repository has no REST API, map the public packages `aflib`, `issuex` and `jobqueue` with each one's purpose and principal exported identifiers taken from the copied code, and point to `docs/generated/`",
+          "contract": "it says the repository has no REST API; it has an entry for each of aflib, issuex and jobqueue with purpose and principal exported identifiers; every identifier it names appears in the matching golden; it points to docs/generated/",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "docs/api.md",
+              "a handoff review step, not a committed Go test, because steering forbids tests of doc content",
+              "the exported identifiers in testdata/api/*.golden"
+            ],
+            "pseudocode": "doc = read('docs/api.md'); assert 'no REST API' in doc; for p in pkgs: assert p in doc; for id in named_identifiers(doc,p): assert id in golden(p); assert 'docs/generated' in doc"
+          }
         },
         {
-          "id": "01-REQ-8.2",
+          "id": "REQ-8.2",
           "pattern": "ubiquitous",
           "system": "docs/architecture.md",
-          "action": "cover each package's origin (repository and full hash), the import graph (neither package imports the other; `issuex` is standard library only; `jobqueue` uses the standard library and uuid; tests also use `modernc.org/sqlite`), the allowlist and the rule that a new module needs a ruling there first, the test layout, `jobqueue`'s caller contract (caller-owned `*sql.DB` with WAL and `busy_timeout`, idempotent handlers), versioning (`vX.Y.Z` tags, first `v0.1.0` cut by a human after both consumers switch; before 1.0 a breaking change bumps the minor version and is recorded in the errata), and any `internal/` helpers added under 01-REQ-4.3"
+          "action": "cover each package's origin (repository and full hash), the import graph (neither package imports the other; `issuex` is standard library only; `jobqueue` uses the standard library and uuid; tests also use `modernc.org/sqlite`), the allowlist and the rule that a new module needs a ruling there first, the test layout, `jobqueue`'s caller contract (caller-owned `*sql.DB` with WAL and `busy_timeout`, idempotent handlers), versioning (`vX.Y.Z` tags, first `v0.1.0` cut by a human after both consumers switch; before 1.0 a breaking change bumps the minor version and is recorded in the errata), and any `internal/` helpers added under 01-REQ-4.3",
+          "contract": "it gives each package's source repository and full hash; it states neither package imports the other, issuex is stdlib-only, jobqueue uses stdlib and uuid, tests also use modernc.org/sqlite; it states the allowlist and that a new module needs a ruling there first; it describes the test layout (tests next to code, root guard tests, goldens in testdata/api/); it states the jobqueue caller contract (caller-owned *sql.DB, WAL and busy_timeout, idempotent handlers); it states the versioning rule with v0.1.0 cut by a human after both consumers switch, and any internal/ helpers",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "docs/architecture.md",
+              "a handoff review step, not a committed Go test"
+            ],
+            "pseudocode": "doc = read('docs/architecture.md'); for needle in [af_fullhash, hub_fullhash, 'busy_timeout', 'idempotent', 'v0.1.0', 'testdata/api']: assert needle in doc"
+          }
         },
         {
-          "id": "01-REQ-8.3",
+          "id": "REQ-8.3",
           "pattern": "ubiquitous",
           "system": "docs/cli.md and docs/configuration.md",
-          "action": "state in `docs/cli.md`, in one line, that the repository has no command. List in `docs/configuration.md` every environment variable the copied `issuex` code reads (checked against the code, not only `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_API_URL` and `GITHUB_API_URL`), its precedence below explicit `Options`, the `git` and `gh` fallbacks, and the fact that hub sets everything explicitly. It also states that `jobqueue` reads no environment"
+          "action": "state in `docs/cli.md`, in one line, that the repository has no command. List in `docs/configuration.md` every environment variable the copied `issuex` code reads (checked against the code, not only `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITLAB_API_URL` and `GITHUB_API_URL`), its precedence below explicit `Options`, the `git` and `gh` fallbacks, and the fact that hub sets everything explicitly. It also states that `jobqueue` reads no environment",
+          "contract": "docs/cli.md says in one line that the repository has no command; docs/configuration.md lists every variable found in the code, not only GITHUB_TOKEN, GITLAB_TOKEN, GITLAB_API_URL and GITHUB_API_URL; it states the precedence below explicit Options, the git remote get-url and gh fallbacks, and that hub sets everything explicitly; it states that jobqueue reads no environment, and jobqueue non-test files contain no environment reads",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the copied issuex non-test files",
+              "docs/cli.md and docs/configuration.md",
+              "a handoff review step, not a committed Go test"
+            ],
+            "pseudocode": "vars = grep_env_names('issuex', nontest=True); for v in vars: assert v in read('docs/configuration.md'); assert grep_env('jobqueue', nontest=True) == []"
+          }
         },
         {
-          "id": "01-REQ-8.4",
+          "id": "REQ-8.4",
           "pattern": "ubiquitous",
           "system": "erratum",
-          "action": "exist at `docs/errata/01_import_issuex_and_jobqueue.md`. It records the source repository and full hash of each package. It explains that requirement IDs in copied test names and comments (such as `10-REQ-6.E3` and `01-REQ-4.8`) refer to the source repositories' spec archives, not to this repository's specs. It lists every finding, or states that there were none"
+          "action": "exist at `docs/errata/01_import_issuex_and_jobqueue.md`. It records the source repository and full hash of each package. It explains that requirement IDs in copied test names and comments (such as `10-REQ-6.E3` and `01-REQ-4.8`) refer to the source repositories' spec archives, not to this repository's specs. It lists every finding, or states that there were none",
+          "contract": "it exists at that path; it names https://github.com/agent-fox-dev/agent-fox with the full hash of 84fb9b4 and https://github.com/agent-fox-dev/hub with the full hash of ce8e1b8; it explains that IDs such as 10-REQ-6.E3 and 01-REQ-4.8 in copied tests refer to the source repositories' spec archives, not this repository's specs; it lists each R4 finding or states there were none",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "docs/errata/01_import_issuex_and_jobqueue.md",
+              "a handoff review step, not a committed Go test"
+            ],
+            "pseudocode": "e = read('docs/errata/01_import_issuex_and_jobqueue.md'); assert af_fullhash in e and hub_fullhash in e and '10-REQ-6.E3' in e and ('no findings' in e.lower() or findings_listed(e))"
+          }
         },
         {
-          "id": "01-REQ-8.5",
+          "id": "REQ-8.5",
           "pattern": "ubiquitous",
           "system": "README.md",
-          "action": "explain the module and its two packages, how to require it (`go get github.com/agent-fox-dev/aflib`), the quality commands (`make check`, `make doc`, `make api-golden`), and link to the docs under `docs/`"
+          "action": "explain the module and its two packages, how to require it (`go get github.com/agent-fox-dev/aflib`), the quality commands (`make check`, `make doc`, `make api-golden`), and link to the docs under `docs/`",
+          "contract": "it describes the module and both packages; it contains `go get github.com/agent-fox-dev/aflib`; it mentions `make check`, `make doc` and `make api-golden`; it links to the files under docs/ and each link target exists",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "README.md",
+              "a handoff review step, not a committed Go test"
+            ],
+            "pseudocode": "r = read('README.md'); for n in ['go get github.com/agent-fox-dev/aflib','make check','make doc','make api-golden','issuex','jobqueue']: assert n in r; for l in doc_links(r): assert exists(l)"
+          }
         }
       ]
     },
     {
-      "id": "01-REQ-9",
+      "id": "REQ-9",
       "title": "Agent policy files",
       "rationale": "Agents read AGENTS.md, CLAUDE.md and the steering first, and these files still describe AgentKit.",
       "criteria": [
         {
-          "id": "01-REQ-9.1",
+          "id": "REQ-9.1",
           "pattern": "ubiquitous",
           "system": "AGENTS.md",
-          "action": "rewrite only its Repository Layout section to describe this repository: `doc.go` (root package, doc only), `issuex/`, `jobqueue/`, the root guard tests and `testdata/api/`, `docs/` and `docs/generated/`, `.specs/`, and tests living next to the code. Every other section stays byte-identical"
+          "action": "rewrite only its Repository Layout section to describe this repository: `doc.go` (root package, doc only), `issuex/`, `jobqueue/`, the root guard tests and `testdata/api/`, `docs/` and `docs/generated/`, `.specs/`, and tests living next to the code. Every other section stays byte-identical",
+          "contract": "every section other than Repository Layout is byte-identical; the new Repository Layout mentions doc.go, issuex/, jobqueue/, root guard tests, testdata/api/, docs/, docs/generated/, .specs/ and tests next to the code, and no longer mentions agentkit.Config, examples/ or containers/; CLAUDE.md is byte-identical to AGENTS.md",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "AGENTS.md at the commit before this spec's work and in the working tree",
+              "CLAUDE.md in the working tree"
+            ],
+            "pseudocode": "old = sections(git_show('BASE:AGENTS.md')); new = sections(read('AGENTS.md')); for s in old: if s != 'Repository Layout': assert old[s] == new[s]; assert 'agentkit' not in new['Repository Layout']; assert bytes('CLAUDE.md') == bytes('AGENTS.md')"
+          }
         },
         {
-          "id": "01-REQ-9.2",
+          "id": "REQ-9.2",
           "pattern": "ubiquitous",
           "system": "CLAUDE.md",
-          "action": "have content byte-identical to AGENTS.md after the rewrite"
+          "action": "have content byte-identical to AGENTS.md after the rewrite",
+          "check": {
+            "same_as": "REQ-9.1"
+          }
         },
         {
-          "id": "01-REQ-9.3",
+          "id": "REQ-9.3",
           "pattern": "ubiquitous",
           "system": ".specs/steering.md",
-          "action": "rewrite only its Repository Specifics section. It states that aflib is a library with no REST API and no command, that `docs/api.md` is the map of its public packages, and that it is a single module with no nested modules. Every other section stays byte-identical"
+          "action": "rewrite only its Repository Specifics section. It states that aflib is a library with no REST API and no command, that `docs/api.md` is the map of its public packages, and that it is a single module with no nested modules. Every other section stays byte-identical",
+          "contract": "every section other than Repository Specifics is byte-identical; the new section states aflib is a library with no REST API and no command, that docs/api.md maps its public packages, and that it is a single module with no nested modules; it no longer mentions AgentKit or MODULES",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              ".specs/steering.md at the commit before this spec's work and in the working tree"
+            ],
+            "pseudocode": "old = sections(git_show('BASE:.specs/steering.md')); new = sections(read('.specs/steering.md')); for s in old: if s != 'Repository Specifics': assert old[s] == new[s]; assert 'AgentKit' not in new['Repository Specifics']"
+          }
         }
       ]
     }
   ],
   "execution_paths": [
     {
-      "id": "01-PATH-1",
+      "id": "PATH-1",
       "title": "A developer runs the quality gate in a clean checkout",
       "steps": [
         {
@@ -499,10 +899,34 @@
           "actor": "Makefile",
           "action": "exits 0"
         }
-      ]
+      ],
+      "smoke": {
+        "real_components": [
+          "Makefile",
+          "go toolchain",
+          "gofmt and go vet",
+          "golangci-lint when installed",
+          "issuex package and its tests",
+          "jobqueue package, its tests and modernc.org/sqlite",
+          "TestExportedAPI",
+          "TestDependencies"
+        ],
+        "setup": [
+          "a fresh clone of the repository alone, no go.work, no sibling repositories",
+          "Go module proxy reachable",
+          "golangci-lint may or may not be installed"
+        ],
+        "end_state": [
+          "fmt, vet, lint (or a skip message) and test-short run in order",
+          "the issuex tests run against httptest servers, the jobqueue tests against SQLite, and the GitLab smoke test is skipped",
+          "TestExportedAPI matches the three goldens and TestDependencies reports no violation",
+          "the exit code is 0"
+        ],
+        "pseudocode": "clone(tmp); r = run('make check', cwd=tmp); assert r.code == 0; assert 'ok' in r.out for each package"
+      }
     },
     {
-      "id": "01-PATH-2",
+      "id": "PATH-2",
       "title": "A developer changes an exported declaration and accepts it on purpose",
       "steps": [
         {
@@ -525,10 +949,28 @@
           "actor": "developer",
           "action": "reruns `make check`, which exits 0 with the updated golden in the working tree"
         }
-      ]
+      ],
+      "smoke": {
+        "real_components": [
+          "Makefile",
+          "TestExportedAPI",
+          "go/build, go/parser, go/doc and go/format renderer",
+          "golden files in testdata/api",
+          "go toolchain"
+        ],
+        "setup": [
+          "a scratch copy of the repository where make check passes"
+        ],
+        "end_state": [
+          "the first `make check` exits non-zero and the output names jobqueue, the first differing line and `make api-golden`",
+          "`make api-golden` rewrites testdata/api/jobqueue.golden with the new rendering",
+          "the second `make check` exits 0"
+        ],
+        "pseudocode": "edit(scratch+'/jobqueue/x.go', change_exported_sig); r1 = run('make check'); assert r1.code != 0 and 'jobqueue' in r1.out and 'make api-golden' in r1.out; run('make api-golden'); assert run('make check').code == 0"
+      }
     },
     {
-      "id": "01-PATH-3",
+      "id": "PATH-3",
       "title": "A developer adds a disallowed dependency",
       "steps": [
         {
@@ -547,10 +989,28 @@
           "actor": "Makefile",
           "action": "stops `check` and exits non-zero"
         }
-      ]
+      ],
+      "smoke": {
+        "real_components": [
+          "Makefile",
+          "TestDependencies",
+          "go.mod parser",
+          "go/parser import scanner",
+          "go toolchain"
+        ],
+        "setup": [
+          "a scratch copy of the repository where make check passes"
+        ],
+        "end_state": [
+          "each run exits non-zero and stops before any later step",
+          "the output names go.mod and the replace directive in the first case",
+          "the output names the file and the offending import path in the second case"
+        ],
+        "pseudocode": "append(scratch+'/go.mod','replace example.com/x => ../x'); r = run('make check'); assert r.code != 0 and 'go.mod' in r.out and 'replace' in r.out; restore(); add_import(scratch+'/issuex/x.go','example.com/bad'); r = run('make check'); assert r.code != 0 and 'example.com/bad' in r.out"
+      }
     },
     {
-      "id": "01-PATH-4",
+      "id": "PATH-4",
       "title": "A developer regenerates the generated docs",
       "steps": [
         {
@@ -565,7 +1025,24 @@
           "actor": "Makefile",
           "action": "writes `docs/generated/aflib.txt`, `issuex.txt` and `jobqueue.txt`, which match the committed files"
         }
-      ]
+      ],
+      "smoke": {
+        "real_components": [
+          "Makefile",
+          "go doc",
+          "public package discovery",
+          "committed docs/generated files"
+        ],
+        "setup": [
+          "the committed tree"
+        ],
+        "end_state": [
+          "go doc -all is run for each public package",
+          "docs/generated/aflib.txt, issuex.txt and jobqueue.txt are written",
+          "`git status --porcelain docs/generated` is empty"
+        ],
+        "pseudocode": "assert run('make doc').code == 0; assert sorted(ls('docs/generated')) == ['aflib.txt','issuex.txt','jobqueue.txt']; assert run('git status --porcelain docs/generated').out == ''"
+      }
     }
   ],
   "external_apis": [
