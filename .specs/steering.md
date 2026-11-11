@@ -96,8 +96,4 @@ grepping for declarations.
 
 ## Repository Specifics
 
-- Go module `github.com/agent-fox-dev/parley` (`go 1.27`); lint configuration
-  is `.golangci.yml`.
-- Spec packages live in `.specs/`; the product PRD is split per section in
-  `docs/prd/`.
-- No shared test helpers exist yet. Name them here when the first ones land.
+<!-- TBD --->
